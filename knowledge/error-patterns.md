@@ -434,6 +434,33 @@ fix: |
   ENV {VAR_NAME}=${{{VAR_NAME}_PLACEHOLDER}}
 ```
 
+### Next.js API Route SDK Initialization (Resend, Stripe, etc.)
+
+```yaml
+pattern: "Missing API key.*Pass it to the constructor|error:.*API key|Failed to collect page data for /api/"
+category: build_env
+confidence: high
+description: |
+  Next.js statically analyzes API routes during build time and attempts to load modules,
+  even if the code only runs at runtime. If an SDK is initialized at module top-level
+  (e.g., `const resend = new Resend(process.env.KEY)`), the build will fail due to
+  missing API key.
+fix: |
+  # Add placeholder values in build stage (these won't be used at runtime)
+  ARG RESEND_API_KEY=re_placeholder_key
+  ARG STRIPE_SECRET_KEY=sk_placeholder_key
+  ARG NOTION_SECRET=placeholder_notion_secret
+  # ... add corresponding variables based on error message
+
+  ENV RESEND_API_KEY=${RESEND_API_KEY}
+  ENV STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+  ENV NOTION_SECRET=${NOTION_SECRET}
+detection: |
+  # Scan app/api/**/route.ts to detect required env vars:
+  grep -r "new.*process\.env\." app/api/
+  grep -r "process\.env\.\w\+" app/api/ | grep -v "process.env.NODE_ENV"
+```
+
 ### Database URL Required at Build Time
 
 ```yaml

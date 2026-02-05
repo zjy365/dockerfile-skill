@@ -12,17 +12,24 @@ Project analysis from `analyze.md` module.
 
 ### Rule 1: Select Base Template
 
-Based on `analysis.framework`:
+Based on `analysis.framework` and `analysis.package_manager`:
 
-| Framework | Template |
-|-----------|----------|
-| express / koa / nestjs | [templates/nodejs-express.dockerfile](../templates/nodejs-express.dockerfile) |
-| nextjs | [templates/nodejs-nextjs.dockerfile](../templates/nodejs-nextjs.dockerfile) |
-| nuxt | [templates/nodejs-nuxt.dockerfile](../templates/nodejs-nuxt.dockerfile) |
-| fastapi / flask | [templates/python-fastapi.dockerfile](../templates/python-fastapi.dockerfile) |
-| django | [templates/python-django.dockerfile](../templates/python-django.dockerfile) |
-| go (any) | [templates/golang.dockerfile](../templates/golang.dockerfile) |
-| springboot | [templates/java-springboot.dockerfile](../templates/java-springboot.dockerfile) |
+| Framework | Package Manager | Template |
+|-----------|-----------------|----------|
+| express / koa / nestjs | npm/yarn/pnpm | [templates/nodejs-express.dockerfile](../templates/nodejs-express.dockerfile) |
+| nextjs | npm/yarn/pnpm | [templates/nodejs-nextjs.dockerfile](../templates/nodejs-nextjs.dockerfile) |
+| nextjs | bun | [templates/nodejs-nextjs-bun.dockerfile](../templates/nodejs-nextjs-bun.dockerfile) |
+| nuxt | any | [templates/nodejs-nuxt.dockerfile](../templates/nodejs-nuxt.dockerfile) |
+| fastapi / flask | any | [templates/python-fastapi.dockerfile](../templates/python-fastapi.dockerfile) |
+| django | any | [templates/python-django.dockerfile](../templates/python-django.dockerfile) |
+| go (any) | any | [templates/golang.dockerfile](../templates/golang.dockerfile) |
+| springboot | any | [templates/java-springboot.dockerfile](../templates/java-springboot.dockerfile) |
+
+**Package Manager Detection**:
+- `bun.lockb` → Bun
+- `pnpm-lock.yaml` → pnpm
+- `yarn.lock` → Yarn
+- `package-lock.json` → npm
 
 ### Rule 2: Apply Best Practices
 
@@ -120,21 +127,66 @@ If `analysis.dependencies.external_services` is not empty:
 
 #### Next.js Special Rules
 
-1. Check for `output: 'standalone'` in next.config
-2. If standalone mode:
+**Rule 1: Always Enable Standalone Output (Recommended)**
+
+Standalone mode can reduce image size by 80-90% (e.g., from 3GB to 350MB).
+
+1. **Check next.config.{js,mjs,ts}** for existing `output: 'standalone'`
+2. **If not present, automatically add it**:
+   ```javascript
+   // next.config.mjs
+   const nextConfig = {
+     output: 'standalone',  // Add this line
+     // ... other config
+   }
+   ```
+
+3. **Standalone Mode Dockerfile**:
    ```dockerfile
-   COPY --from=build /app/.next/standalone ./
-   COPY --from=build /app/.next/static ./.next/static
-   COPY --from=build /app/public ./public
+   # Only copy standalone output, no full node_modules needed
+   COPY --from=builder /app/public ./public
+   COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+   COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
    CMD ["node", "server.js"]
    ```
 
-3. If NOT standalone:
+4. **Non-Standalone Mode** (not recommended, large image):
    ```dockerfile
    COPY --from=build /app/.next ./.next
    COPY --from=build /app/node_modules ./node_modules
    CMD ["npm", "start"]
    ```
+
+**Rule 2: Detect SDK Initialization in API Routes**
+
+Next.js statically analyzes all routes during build. If an API route has top-level SDK initialization:
+```typescript
+// app/api/mail/route.ts
+const resend = new Resend(process.env.RESEND_API_KEY);  // Executes at build time!
+```
+
+**Detection Method**:
+```bash
+# Scan for process.env usage in API routes
+grep -r "process\.env\.\w\+" app/api/ --include="*.ts" --include="*.tsx"
+```
+
+**Fix**: Add placeholder environment variables in build stage
+```dockerfile
+# Build stage - add placeholders (only for passing static analysis)
+ARG RESEND_API_KEY=re_placeholder_key
+ARG NOTION_SECRET=placeholder_secret
+ENV RESEND_API_KEY=${RESEND_API_KEY}
+ENV NOTION_SECRET=${NOTION_SECRET}
+# Actual values are injected at runtime via docker run -e or compose
+```
+
+**Common SDKs Requiring Placeholders**:
+- Resend: `RESEND_API_KEY`
+- Stripe: `STRIPE_SECRET_KEY`
+- Notion: `NOTION_SECRET`, `NOTION_DB`
+- Upstash: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
+- Supabase: `SUPABASE_URL`, `SUPABASE_KEY`
 
 #### Monorepo Special Rules (L3)
 
