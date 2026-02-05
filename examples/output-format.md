@@ -40,7 +40,7 @@ services:
 ```
 
 ### Build Results
-✅ Build successful!
+Build successful!
 
 **Image**: `your-app:latest`
 **Size**: ~245MB
@@ -90,13 +90,13 @@ docker-compose up -d
 **Error**: `Error: DATABASE_URL environment variable is required`
 **Fix Applied**: Added `ARG DATABASE_URL=postgres://placeholder` and `ENV DATABASE_URL=$DATABASE_URL`
 
-#### Iteration 3: Success ✅
+#### Iteration 3: Success
 
 ### Generated Files
 [files output...]
 
 ### Build Results
-✅ Build successful after 3 iterations
+Build successful after 3 iterations
 
 ### Fixes Applied
 1. Created missing config directory and placeholder config.json
@@ -138,20 +138,20 @@ The build failed due to a private npm package that requires authentication.
 
 **To fix**:
 1. Add `.npmrc` with registry authentication:
-   ```
-   //npm.pkg.github.com/:_authToken=${NPM_TOKEN}
-   @company:registry=https://npm.pkg.github.com
-   ```
+  ```
+  //npm.pkg.github.com/:_authToken=${NPM_TOKEN}
+  @company:registry=https://npm.pkg.github.com
+  ```
 
 2. Update Dockerfile to use build secrets:
-   ```dockerfile
-   RUN --mount=type=secret,id=npmrc,target=/root/.npmrc npm ci
-   ```
+  ```dockerfile
+  RUN --mount=type=secret,id=npmrc,target=/root/.npmrc npm ci
+  ```
 
 3. Build with:
-   ```bash
-   docker build --secret id=npmrc,src=.npmrc -t app .
-   ```
+  ```bash
+  docker build --secret id=npmrc,src=.npmrc -t app .
+  ```
 
 ### Partial Output
 The best working version of Dockerfile has been saved. It may work with the above modifications.
