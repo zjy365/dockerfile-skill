@@ -145,9 +145,57 @@ If `analysis.dependencies.external_services` is not empty:
 
 2. For pnpm workspace:
    ```dockerfile
-   COPY pnpm-lock.yaml pnpm-workspace.yaml ./
-   COPY packages/*/package.json ./packages/
-   RUN pnpm install --frozen-lockfile
+   # Copy workspace configuration
+   COPY package.json pnpm-workspace.yaml .npmrc ./
+
+   # Copy all workspace package.json files
+   COPY packages ./packages
+   COPY patches ./patches
+   COPY e2e/package.json ./e2e/
+   COPY apps/desktop/src/main/package.json ./apps/desktop/src/main/
+
+   # Install - check if lockfile is disabled
+   # If lockfile=false in .npmrc:
+   RUN pnpm install --ignore-scripts
+   # Otherwise:
+   RUN pnpm install --frozen-lockfile --ignore-scripts
+   ```
+
+3. For pnpm workspace with `lockfile=false`:
+   ```dockerfile
+   # IMPORTANT: Do NOT use --frozen-lockfile
+   # Check .npmrc for lockfile=false
+   RUN pnpm install --ignore-scripts
+   ```
+
+4. Handle custom entry points:
+   ```dockerfile
+   # If project has custom startServer.js or similar
+   COPY --from=builder /app/scripts/serverLauncher/startServer.js ./startServer.js
+   COPY --from=builder /app/scripts/_shared ./scripts/_shared
+
+   # Handle database migrations
+   COPY --from=builder /app/scripts/migrateServerDB/docker.cjs ./docker.cjs
+   COPY --from=builder /app/packages/database/migrations ./migrations
+   ```
+
+5. Handle build-time environment variables:
+   ```dockerfile
+   # For Next.js apps that require env vars at build time
+   # Use ARG for build-time only (more secure than ENV)
+   ARG KEY_VAULTS_SECRET_PLACEHOLDER="build-placeholder-key-32chars"
+   ARG DATABASE_URL_PLACEHOLDER="postgres://placeholder:placeholder@localhost:5432/placeholder"
+
+   ENV KEY_VAULTS_SECRET=${KEY_VAULTS_SECRET_PLACEHOLDER}
+   ENV DATABASE_URL=${DATABASE_URL_PLACEHOLDER}
+   ENV AUTH_SECRET=${KEY_VAULTS_SECRET_PLACEHOLDER}
+   ENV DATABASE_DRIVER=""
+   ```
+
+6. Handle Node.js path compatibility:
+   ```dockerfile
+   # Some scripts hardcode /bin/node but node:slim has it in /usr/local/bin
+   RUN ln -sf /usr/local/bin/node /bin/node
    ```
 
 ## Output Files
@@ -158,41 +206,118 @@ Generated based on template + rules above.
 
 ### 2. .dockerignore
 
+**IMPORTANT**: For workspace/monorepo projects, .dockerignore must be carefully crafted to:
+1. Exclude unnecessary files for smaller context
+2. BUT include all workspace package.json files
+3. BUT include patches directory
+4. BUT include required build scripts
+
+**Smart .dockerignore Generation Rules**:
+
+1. Check `analysis.workspace.required_copy_files` - these MUST NOT be excluded
+2. Check `analysis.required_files` - these MUST NOT be excluded
+3. Use negation patterns (`!`) to re-include specific files
+
 ```
 # VCS
 .git
-.github
 .gitignore
+.gitattributes
 
 # Dependencies (will be installed in container)
 node_modules
-__pycache__
-.venv
-vendor
+**/node_modules
+.pnpm-store
 
-# Build outputs
+# Build outputs (will be regenerated)
 .next
+out
 dist
 build
 coverage
+*.tsbuildinfo
 
 # Local environment
 .env
-.env.*
-*.local
+.env.local
+.env.*.local
+# Keep example files for reference
+!.env.example
+!.env.docker.example
 
 # IDE
 .vscode
 .idea
+*.swp
+*.swo
 
-# Logs
-*.log
-npm-debug.log*
+# Documentation (not needed for runtime)
+docs
+*.md
+!README.md
 
-# OS
+# Tests (for workspace, keep package.json only)
+# IMPORTANT: Use e2e/* not e2e to allow !e2e/package.json
+e2e/*
+!e2e/package.json
+tests
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+
+# Desktop app (keep package.json for workspace)
+apps/desktop/node_modules
+apps/desktop/dist
+apps/desktop/out
+# Note: Do NOT exclude apps/desktop entirely if it's a workspace package
+
+# CI/CD
+.github
+.gitlab
+.circleci
+
+# Docker files (avoid recursion)
+Dockerfile*
+docker-compose*.yml
+!docker-compose/
+
+# Misc
 .DS_Store
 Thumbs.db
+*.log
+npm-debug.log*
+.pnpm-debug.log*
+
+# Cache
+.cache
+.turbo
+.eslintcache
+.stylelintcache
+
+# Source maps (optional, may want for debugging)
+# *.map
+
+# Scripts not needed for runtime
+# IMPORTANT: Do NOT exclude scripts needed for build/start
+# scripts/prebuild.mts    # Needed for build
+# scripts/serverLauncher  # Needed for start
+scripts/cdnWorkflow
+scripts/changelogWorkflow
+scripts/docsWorkflow
+scripts/i18nWorkflow
+scripts/mdxWorkflow
+scripts/readmeWorkflow
 ```
+
+**Validation Checklist for .dockerignore**:
+
+- [ ] All workspace package.json files are NOT excluded
+- [ ] patches/ directory is NOT excluded (if pnpm patches used)
+- [ ] .npmrc is NOT excluded (needed for pnpm config)
+- [ ] Build scripts are NOT excluded (prebuild.mts, etc.)
+- [ ] Server launcher scripts are NOT excluded
+- [ ] Migration scripts are NOT excluded
 
 ### 3. docker-compose.yml (if external services)
 

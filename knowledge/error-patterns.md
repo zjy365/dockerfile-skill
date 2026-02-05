@@ -330,6 +330,163 @@ fix: |
   RUN pnpm install
 ```
 
+### Lockfile Disabled in Config
+
+```yaml
+pattern: "lockfile is set to false|Cannot generate.*lockfile.*because lockfile is set to false"
+category: lockfile
+confidence: high
+fix: |
+  # Project has lockfile=false in .npmrc
+  # Do NOT use --frozen-lockfile
+  RUN pnpm install --ignore-scripts
+  # Instead of:
+  # RUN pnpm install --frozen-lockfile
+```
+
+---
+
+---
+
+## Category: Workspace / Monorepo
+
+### Workspace Package Not Found
+
+```yaml
+pattern: "ENOENT.*workspace.*package.json|pnpm.*ERR_PNPM_NO_IMPORTER"
+category: workspace
+confidence: high
+fix: |
+  # Ensure all workspace package.json files are copied
+  COPY packages ./packages
+  COPY e2e/package.json ./e2e/
+  COPY apps/desktop/src/main/package.json ./apps/desktop/src/main/
+```
+
+### Patches Directory Missing
+
+```yaml
+pattern: "ENOENT.*patches/|Could not apply patch"
+category: workspace
+confidence: high
+fix: |
+  # pnpm patches require patches directory
+  COPY patches ./patches
+```
+
+### .dockerignore Excludes Required Files
+
+```yaml
+pattern: "COPY failed.*not found|failed to calculate checksum.*not found"
+category: workspace
+confidence: high
+fix: |
+  # Check .dockerignore - likely excluding required workspace files
+  # Use specific exclusions instead of directory-level:
+  # Bad:  e2e
+  # Good: e2e/*
+  #       !e2e/package.json
+```
+
+---
+
+## Category: Node.js Path / Runtime
+
+### Node Binary Not Found
+
+```yaml
+pattern: "spawn /bin/node ENOENT|spawn node ENOENT|/bin/node.*not found"
+category: runtime_path
+confidence: high
+fix: |
+  # node:slim images have node at /usr/local/bin/node, not /bin/node
+  # Some scripts hardcode /bin/node
+  RUN ln -sf /usr/local/bin/node /bin/node
+```
+
+### Proxychains Not Found
+
+```yaml
+pattern: "/bin/proxychains.*not found|proxychains.*ENOENT"
+category: runtime_deps
+confidence: high
+fix: |
+  RUN apt-get update && apt-get install -y --no-install-recommends \
+      proxychains4 \
+      && rm -rf /var/lib/apt/lists/*
+```
+
+---
+
+## Category: Build-Time Environment
+
+### Build-Time Env Required (Next.js SSG)
+
+```yaml
+pattern: "`(.+?)` is not set.*build|Failed to collect page data.*(.+?) is not set"
+category: build_env
+confidence: high
+extract: variable name from capture group
+fix: |
+  # Next.js SSG/ISR requires env vars at build time
+  # Add placeholder values for build stage:
+  ARG {VAR_NAME}_PLACEHOLDER="build-placeholder-value"
+  ENV {VAR_NAME}=${{{VAR_NAME}_PLACEHOLDER}}
+```
+
+### Database URL Required at Build Time
+
+```yaml
+pattern: "DATABASE_URL.*is not set|You are try to use database.*DATABASE_URL"
+category: build_env
+confidence: high
+fix: |
+  # Some pages need DB access during build for static generation
+  ARG DATABASE_URL_PLACEHOLDER="postgres://placeholder:placeholder@localhost:5432/placeholder"
+  ENV DATABASE_URL=${DATABASE_URL_PLACEHOLDER}
+  ENV DATABASE_DRIVER=""
+```
+
+### Auth Secret Required at Build Time
+
+```yaml
+pattern: "AUTH_SECRET.*is not set|KEY_VAULTS_SECRET.*is not set"
+category: build_env
+confidence: high
+fix: |
+  ARG KEY_VAULTS_SECRET_PLACEHOLDER="build-placeholder-key-vaults-secret-32chars"
+  ENV KEY_VAULTS_SECRET=${KEY_VAULTS_SECRET_PLACEHOLDER}
+  ENV AUTH_SECRET=${KEY_VAULTS_SECRET_PLACEHOLDER}
+```
+
+---
+
+## Category: Script/Entry Point
+
+### Build Script Missing
+
+```yaml
+pattern: "Cannot find module.*prebuild|ERR_MODULE_NOT_FOUND.*scripts/"
+category: script_missing
+confidence: high
+fix: |
+  # Build script excluded by .dockerignore
+  # Remove from .dockerignore or ensure COPY includes it
+  # Check if script path is in .dockerignore exclusions
+```
+
+### Server Entry Point Not Found
+
+```yaml
+pattern: "Cannot find module.*startServer|Cannot find module.*server.js"
+category: script_missing
+confidence: high
+fix: |
+  # Copy server entry point in production stage
+  COPY --from=builder /app/scripts/serverLauncher/startServer.js ./startServer.js
+  COPY --from=builder /app/scripts/_shared ./scripts/_shared
+```
+
 ---
 
 ## Unknown Error Fallback
@@ -337,6 +494,18 @@ fix: |
 If no pattern matches:
 
 1. Log the full error message
-2. Check if error contains a file path → might be COPY issue
+2. Check if error contains a file path → might be COPY issue or .dockerignore issue
 3. Check if error contains package name → might be dependency issue
-4. Return to user with error for manual review
+4. Check if error mentions env var → might need build-time placeholder
+5. Check if error mentions workspace → might be missing workspace files
+6. Return to user with error for manual review
+
+### Debugging Checklist
+
+When build fails with unknown error:
+
+1. **File not found**: Check .dockerignore, ensure file is not excluded
+2. **Module not found**: Check if it's a workspace package that wasn't copied
+3. **Env var not set**: Add ARG/ENV placeholder for build time
+4. **Permission denied**: Check USER directive placement
+5. **Command not found**: Check if binary exists in the image (node path, proxychains, etc.)
