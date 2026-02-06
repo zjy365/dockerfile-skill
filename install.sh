@@ -15,14 +15,20 @@ SKILLS_DIR="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
 SKILL_DIR_NAME="${SKILL_DIR_NAME:-dockerfile-skill}"
 GITHUB_REPO="${GITHUB_REPO:-zjy365/dockerfile-skill}"
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# Handle both direct execution and curl | bash (where BASH_SOURCE is empty)
+if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
+  SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+else
+  SCRIPT_DIR=""
+fi
 
 mkdir -p "$SKILLS_DIR"
 DEST="$SKILLS_DIR/$SKILL_DIR_NAME"
 
 install_from_local() {
   # When run from a local clone of this repo.
-  if [[ -f "$SCRIPT_DIR/SKILL.md" ]]; then
+  # Skip if SCRIPT_DIR is empty (curl | bash mode)
+  if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/SKILL.md" ]]; then
     rm -rf "$DEST"
     cp -R "$SCRIPT_DIR" "$DEST"
     echo "Installed from local repo: $DEST"
@@ -31,11 +37,17 @@ install_from_local() {
   return 1
 }
 
+# Global temp dir for cleanup
+_INSTALL_TMP=""
+cleanup_tmp() {
+  [[ -n "$_INSTALL_TMP" && -d "$_INSTALL_TMP" ]] && rm -rf "$_INSTALL_TMP"
+}
+trap cleanup_tmp EXIT
+
 install_from_github() {
   local repo="$1"
-  local tmp
-  tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
+  _INSTALL_TMP="$(mktemp -d)"
+  local tmp="$_INSTALL_TMP"
 
   for ref in main master; do
     rm -rf "$tmp"/*
