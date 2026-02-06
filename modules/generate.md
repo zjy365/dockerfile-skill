@@ -366,6 +366,56 @@ Heavy Operations to Skip:
 # - Only running essential build steps: prebuild + next build
 ```
 
+#### Build Command Resolution (from Analysis Step 16)
+
+**Purpose**: Use the auto-resolved build command that skips commands with unavailable config files.
+
+**Input** (from analysis phase `build_command_resolution`):
+```yaml
+build_command_resolution:
+  docker_build_command: "npx tsx scripts/prebuild.mts && npx cross-env NODE_OPTIONS=--max-old-space-size=8192 npx next build --webpack"
+  skipped_commands:
+    - command: "npm run lint"
+      reason: "Config file .eslintrc.js excluded in .dockerignore"
+```
+
+**Generation Rules**:
+
+1. **Always use `docker_build_command` from analysis** - never use raw `npm run prebuild` or `npm run build`:
+   ```dockerfile
+   # Use the resolved command directly
+   RUN ${analysis.build_command_resolution.docker_build_command}
+   ```
+
+2. **Add comments for skipped commands** - document what was skipped and why:
+   ```dockerfile
+   # Build the application
+   # Auto-resolved build command (commands with unavailable configs skipped)
+   # - Skipped: npm run lint (Config file .eslintrc.js excluded in .dockerignore)
+   RUN npx tsx scripts/prebuild.mts && \
+       npx cross-env NODE_OPTIONS=--max-old-space-size=8192 npx next build --webpack
+   ```
+
+3. **Always prefix CLI tools with `npx`** - ensures tools are found in Docker:
+   ```dockerfile
+   # Correct: use npx prefix
+   RUN npx tsx scripts/prebuild.mts && npx next build
+
+   # Incorrect: may fail if not in PATH
+   RUN tsx scripts/prebuild.mts && next build
+   ```
+
+**Why This Matters**:
+- Build scripts often chain multiple commands: `prebuild && lint && build`
+- Some commands (lint, type-check) require config files that may be in `.dockerignore`
+- Instead of modifying `.dockerignore`, we skip commands that would fail
+- This is detected in analysis phase Step 16 and resolved automatically
+
+**No User Interaction Required**:
+- Analysis phase determines which commands to skip based on config file availability
+- Generation phase simply uses the pre-resolved `docker_build_command`
+- Comments document what was skipped for transparency
+
 #### Custom CLI Build Rules (L3 Monorepo)
 
 **CRITICAL**: Many monorepos use custom CLI tools. Using standard `yarn workspace` commands causes silent failures.

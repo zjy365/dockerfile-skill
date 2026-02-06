@@ -746,7 +746,146 @@ native_modules:
     - libssl-dev
 ```
 
-### Step 16: Determine Complexity Level
+### Step 16: Validate Build Command Dependencies
+
+**Purpose**: Detect build commands that will fail due to missing config files in Docker context, and automatically determine the resolved build command.
+
+**Core Principle**:
+If a config file is in `.dockerignore`, the user intentionally excluded it. Respect that decision by skipping commands that depend on it.
+
+**Detection Method**:
+```bash
+# Command → Required config files mapping
+declare -A CMD_CONFIG_DEPS=(
+  ["lint"]=".eslintrc.js .eslintrc.json .eslintrc.cjs eslint.config.js eslint.config.mjs"
+  ["eslint"]=".eslintrc.js .eslintrc.json .eslintrc.cjs eslint.config.js eslint.config.mjs"
+  ["type-check"]="tsconfig.json"
+  ["tsc --noEmit"]="tsconfig.json"
+  ["stylelint"]=".stylelintrc .stylelintrc.js .stylelintrc.json .stylelintrc.cjs"
+  ["prettier --check"]=".prettierrc .prettierrc.js .prettierrc.json .prettierrc.cjs"
+  ["jest"]="jest.config.js jest.config.ts jest.config.mjs"
+  ["vitest"]="vitest.config.ts vitest.config.js vitest.config.mts"
+)
+
+# Parse build-related scripts
+PREBUILD=$(jq -r '.scripts.prebuild // ""' package.json)
+BUILD=$(jq -r '.scripts.build // ""' package.json)
+
+# Split script by && or ; into individual commands
+# For each command:
+#   1. Check if it matches any key in CMD_CONFIG_DEPS
+#   2. If yes, find which config file it needs
+#   3. Check if config file exists in project
+#   4. Check if config file is excluded in .dockerignore
+#   5. Determine action: keep or skip
+
+resolve_command() {
+  local script="$1"
+  local resolved=""
+
+  # Split by &&
+  IFS='&&' read -ra COMMANDS <<< "$script"
+
+  for cmd in "${COMMANDS[@]}"; do
+    cmd=$(echo "$cmd" | xargs)  # trim whitespace
+    should_skip=false
+    skip_reason=""
+
+    for pattern in "${!CMD_CONFIG_DEPS[@]}"; do
+      if echo "$cmd" | grep -q "$pattern"; then
+        config_files="${CMD_CONFIG_DEPS[$pattern]}"
+
+        # Check if any required config exists
+        config_found=""
+        for cfg in $config_files; do
+          if [ -f "$cfg" ]; then
+            config_found="$cfg"
+            break
+          fi
+        done
+
+        if [ -z "$config_found" ]; then
+          # Config file doesn't exist
+          should_skip=true
+          skip_reason="Config file not found"
+        elif [ -f ".dockerignore" ] && grep -qE "^${config_found}$|^${config_found%.*}\." .dockerignore; then
+          # Config file excluded in .dockerignore
+          should_skip=true
+          skip_reason="Config file excluded in .dockerignore"
+        fi
+        break
+      fi
+    done
+
+    if [ "$should_skip" = false ]; then
+      if [ -n "$resolved" ]; then
+        resolved="$resolved && $cmd"
+      else
+        resolved="$cmd"
+      fi
+    fi
+  done
+
+  echo "$resolved"
+}
+```
+
+**Decision Logic**:
+```
+For each command in build script:
+    │
+    ├── Command needs config file?
+    │   │
+    │   ├── NO → Keep command
+    │   │
+    │   └── YES → Config file exists?
+    │             │
+    │             ├── NO → Skip command (config doesn't exist)
+    │             │
+    │             └── YES → Config in .dockerignore?
+    │                       │
+    │                       ├── YES → Skip command (user excluded it)
+    │                       │
+    │                       └── NO → Keep command
+```
+
+**Output**:
+```yaml
+build_command_resolution:
+  original_prebuild: "tsx scripts/prebuild.mts && npm run lint"
+  original_build: "cross-env NODE_OPTIONS=... next build"
+
+  commands:
+    - cmd: "tsx scripts/prebuild.mts"
+      requires_config: "scripts/prebuild.mts"
+      config_status: "available"
+      action: "keep"
+
+    - cmd: "npm run lint"
+      requires_config: ".eslintrc.js"
+      config_status: "excluded_in_dockerignore"
+      action: "skip"
+      skip_reason: "Config file .eslintrc.js excluded in .dockerignore"
+
+  # Final resolved command for Dockerfile
+  resolved_prebuild: "tsx scripts/prebuild.mts"
+  resolved_build: "next build --webpack"
+
+  # Full docker build command
+  docker_build_command: "npx tsx scripts/prebuild.mts && npx cross-env NODE_OPTIONS=--max-old-space-size=8192 npx next build --webpack"
+
+  skipped_commands:
+    - command: "npm run lint"
+      reason: "Config file .eslintrc.js excluded in .dockerignore"
+```
+
+**Key Rules**:
+1. **Respect .dockerignore**: If user excluded a config file, skip commands that need it
+2. **No user interaction**: Automatically determine which commands to skip
+3. **Document skipped commands**: Record what was skipped and why for Dockerfile comments
+4. **Prefix with npx**: Use `npx` for CLI tools to ensure they're found in Docker
+
+### Step 17: Determine Complexity Level
 
 **L1 (Simple)**:
 - Single language
@@ -898,6 +1037,17 @@ analysis:
   memory_risk: "high"
   optimized_build: "npx tsx scripts/prebuild.mts && npx next build --webpack"
   memory_limit: "NODE_OPTIONS=--max-old-space-size=8192"
+
+ # Build command resolution (from Step 16)
+ build_command_resolution:
+  original_prebuild: "tsx scripts/prebuild.mts && npm run lint"
+  original_build: "cross-env NODE_OPTIONS=... next build"
+  resolved_prebuild: "tsx scripts/prebuild.mts"
+  resolved_build: "next build --webpack"
+  docker_build_command: "npx tsx scripts/prebuild.mts && npx cross-env NODE_OPTIONS=--max-old-space-size=8192 npx next build --webpack"
+  skipped_commands:
+   - command: "npm run lint"
+     reason: "Config file .eslintrc.js excluded in .dockerignore"
 
  # Complexity assessment
  complexity: "L3"

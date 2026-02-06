@@ -346,6 +346,63 @@ fix: |
 
 ---
 
+## Category: Build Tool Configuration
+
+### ESLint Parse Errors (Config Missing)
+
+```yaml
+pattern: "Parsing error: The keyword '(import|export|const|let|class)' is reserved|✖ \\d+ problems \\(\\d+ errors"
+category: build_config
+confidence: high
+cause: |
+  Build script includes lint/eslint step, but ESLint config files
+  (.eslintrc.js, eslint.config.js, etc.) are excluded from Docker context.
+  ESLint falls back to default parser which doesn't support ES6+ syntax.
+prevention: |
+  Should be caught in analysis phase Step 16 (Build Command Dependency Validation).
+  Analysis auto-detects commands with missing config files and generates
+  a resolved build command that skips them.
+fix: |
+  # Identify the prebuild script that runs lint:
+  # e.g., "prebuild": "tsx scripts/prebuild.mts && npm run lint"
+
+  # Replace with direct script execution, skipping lint:
+  # Before (fails):
+  RUN npm run prebuild && npm run build
+
+  # After (works):
+  RUN npx tsx scripts/prebuild.mts && npx next build --webpack
+
+  # Add comment explaining the change:
+  # NOTE: Running prebuild script directly (skipping lint)
+  # Lint requires .eslintrc.js which is excluded in .dockerignore
+  # Run lint in CI/CD pipeline instead
+```
+
+### TypeScript Config Missing
+
+```yaml
+pattern: "Cannot find.*tsconfig.json|TS18003.*tsconfig.json"
+category: build_config
+confidence: high
+fix: |
+  # If type-check is in build script but tsconfig.json excluded:
+  # Skip type-check command, run essential build steps only
+
+  # Or ensure tsconfig.json is NOT in .dockerignore
+```
+
+### Stylelint Config Missing
+
+```yaml
+pattern: "Error: No configuration provided for|Could not find.*stylelintrc"
+category: build_config
+confidence: high
+fix: |
+  # Skip stylelint command or ensure config file is available
+  # Same pattern as ESLint - run essential build steps only
+```
+
 ---
 
 ## Category: Workspace / Monorepo
