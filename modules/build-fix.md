@@ -287,7 +287,7 @@ HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3210)
 
 if [ "$HTTP_CODE" = "500" ]; then
  echo "CRITICAL: Application returning 500 error"
- docker-compose logs lobechat
+ docker-compose logs app
 fi
 
 # Test specific API endpoint
@@ -298,13 +298,13 @@ curl -v http://localhost:3210/api/health
 
 ```bash
 # Check for common error patterns
-docker-compose logs lobechat | grep -E "error|Error|ERROR|failed|Failed|FAILED" | tail -20
+docker-compose logs app | grep -E "error|Error|ERROR|failed|Failed|FAILED" | tail -20
 
 # Check for migration-related errors
-docker-compose logs lobechat | grep -E "migration|migrate|schema|relation.*does not exist"
+docker-compose logs app | grep -E "migration|migrate|schema|relation.*does not exist"
 
 # Check for database connection
-docker-compose logs lobechat | grep -E "database|postgres|connection"
+docker-compose logs app | grep -E "database|postgres|connection"
 ```
 
 ### Validation Checklist

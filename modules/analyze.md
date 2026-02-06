@@ -733,8 +733,8 @@ native_modules:
   napi_rs: true
   packages:
     - path: "packages/backend/native"
-      name: "@affine/server-native"
-      build_command: "yarn workspace @affine/server-native build"
+      name: "@scope/native"
+      build_command: "yarn workspace @scope/native build"
       targets:
         - "x86_64-unknown-linux-gnu"
         - "aarch64-unknown-linux-gnu"
@@ -771,7 +771,7 @@ native_modules:
 - Has build-time env var requirements
 - Custom entry points / server launchers
 - Complex migration system (76+ migrations, ORM dependencies)
-- Examples: Dify, Affine, LobeChat, large enterprise apps
+- Examples: Large monorepo projects, enterprise applications
 
 ## Output Format
 

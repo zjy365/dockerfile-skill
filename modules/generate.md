@@ -204,7 +204,7 @@ migration_system:
 
 **Solution 1: Separate Dependencies Installation (Recommended)**
 
-Based on official LobeChat approach:
+Pattern for Next.js Standalone + ORM:
 
 ```dockerfile
 # Build stage

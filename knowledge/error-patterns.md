@@ -711,16 +711,13 @@ fix: |
   # Detection: Check package.json scripts for custom CLI usage
 
   # Wrong (standard workspace):
-  # RUN yarn workspace @affine/web build
+  # RUN yarn workspace @scope/web build
 
-  # Correct (custom CLI - example for AFFiNE):
-  RUN yarn affine build -p @affine/web
-
-  # Correct (Turborepo):
-  RUN yarn turbo run build --filter=@app/web
-
-  # Correct (Nx):
-  RUN yarn nx build web
+  # Correct (use detected CLI syntax from analysis):
+  # Turborepo: yarn turbo run build --filter=@scope/web
+  # Nx:        yarn nx build web
+  # Lerna:     yarn lerna run build --scope=@scope/web
+  # Custom:    yarn ${CLI_NAME} build -p @scope/web
 prevention: |
   In analysis phase Step 14:
   - Detect custom CLI in package.json scripts
@@ -788,13 +785,12 @@ fix: |
   # Backend code hardcodes expected static asset paths
   # Must copy frontend outputs to correct locations
 
-  # Example for AFFiNE:
-  COPY --from=builder /app/packages/frontend/apps/web/dist ./static
-  COPY --from=builder /app/packages/frontend/apps/mobile/dist ./static/mobile
-  COPY --from=builder /app/packages/frontend/admin/dist ./static/admin
+  # Example (paths detected from analysis):
+  COPY --from=builder /app/${FRONTEND_OUTPUT} ./${BACKEND_EXPECTS}
+  # e.g., COPY --from=builder /app/packages/web/dist ./static
 
   # Detection: Search backend code for static path references
-  # grep -rE "projectRoot.*static|assets-manifest" packages/backend/
+  # grep -rE "projectRoot.*static|assets-manifest|webAssets" packages/backend/ src/server/
 prevention: |
   In analysis phase Step 14:
   - Detect backend's expected static paths

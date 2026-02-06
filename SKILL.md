@@ -25,7 +25,7 @@ This skill generates production-ready Dockerfiles through a 4-phase process:
 ## Key Capabilities
 
 - **Workspace/Monorepo Support**: pnpm workspace, Turborepo, npm workspaces
-- **Custom CLI Detection**: Auto-detect custom build CLIs (affine, turbo, nx, lerna) and use correct syntax
+- **Custom CLI Detection**: Auto-detect custom build CLIs (turbo, nx, lerna, rush, or project-specific) and use correct syntax
 - **Git Hash Bypass**: Detect and handle projects requiring git commit hash (GITHUB_SHA)
 - **Build-Time Env Vars**: Auto-detect and add placeholders for Next.js SSG
 - **Error Pattern Database**: 40+ known error patterns with automatic fixes
@@ -116,7 +116,7 @@ Load and execute: [modules/build-fix.md](modules/build-fix.md)
 4. **Success Criteria**: Only declare success if ALL pass
 
 **Why This Matters**:
-- Previous: Declared success after `docker build`, but app didn't work (LobeChat case)
+- Previous: Declared success after `docker build`, but app didn't work at runtime
 - Now: Verify migrations ran, database populated, app actually functional
 - Prevents silent migration failures (e.g., standalone mode missing ORM deps)
 
@@ -181,7 +181,7 @@ Load and execute: [modules/build-fix.md](modules/build-fix.md)
 
 ### 8. Wrong build command for monorepo with custom CLI
 **Symptom**: Build succeeds but output files missing (e.g., `assets-manifest.json` not found)
-**Cause**: Using `yarn workspace @pkg/name build` instead of custom CLI like `yarn affine build -p @pkg/name`
+**Cause**: Using `yarn workspace @scope/pkg build` instead of detected custom CLI syntax
 **Prevention**: Analysis phase Step 14 detects custom CLI
 **Fix**: Use detected CLI syntax for all build commands
 
@@ -192,7 +192,7 @@ Load and execute: [modules/build-fix.md](modules/build-fix.md)
 **Fix**: Set `ENV GITHUB_SHA=docker-build` to bypass git requirement
 
 ### 10. CLI config files excluded by .dockerignore
-**Symptom**: `affine init` or similar CLI init fails silently
+**Symptom**: CLI initialization (e.g., `${CLI_NAME} init`) fails silently
 **Cause**: `.prettierrc`, `.prettierignore`, or other config files excluded
 **Prevention**: Analysis phase Step 14 detects config file dependencies
 **Fix**: Remove config files from .dockerignore exclusions
@@ -259,12 +259,12 @@ HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3210)
 
 if [ "$HTTP_CODE" = "500" ]; then
  echo "FAILURE: App returning 500 error"
- docker-compose logs lobechat
+ docker-compose logs app
  exit 1
 fi
 
 # 5. Check for errors in logs
-docker-compose logs lobechat | grep -i "error" | tail -20
+docker-compose logs app | grep -i "error" | tail -20
 # Should NOT contain:
 # - "relation does not exist"
 # - "table not found"
