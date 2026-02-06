@@ -1,40 +1,23 @@
 # Dockerfile Skill
 
-A Claude Code plugin that generates production-ready Dockerfiles with automatic build validation.
+A Claude Code skill that generates production-ready Dockerfiles with automatic build validation.
 
 ## Install
 
-### Option 1: Plugin Add (Recommended)
-
 ```bash
-/plugin add https://github.com/zjy365/dockerfile-skill
-```
-
-### Option 2: Git Clone
-
-```bash
-# Clone to any location
-git clone https://github.com/zjy365/dockerfile-skill.git ~/dockerfile-skill
-
-# Then add as local plugin in Claude Code
-/plugin add ~/dockerfile-skill
-
-# Update
-cd ~/dockerfile-skill && git pull
-```
-
-### Option 3: Quick Install Script
-
-```bash
+# Global (recommended)
 curl -fsSL "https://raw.githubusercontent.com/zjy365/dockerfile-skill/main/install.sh" | bash
+
+# Project-local
+CLAUDE_SKILLS_DIR="$(pwd)/.claude/skills" curl -fsSL "https://raw.githubusercontent.com/zjy365/dockerfile-skill/main/install.sh" | bash
 ```
 
 ## Usage
 
 ```bash
-/dockerfile-skill:dockerfile                    # Analyze current directory
-/dockerfile-skill:dockerfile <github-url>       # Clone and analyze GitHub repo
-/dockerfile-skill:dockerfile <path>             # Analyze specific path
+/dockerfile                    # Analyze current directory
+/dockerfile <github-url>       # Clone and analyze GitHub repo
+/dockerfile <path>             # Analyze specific path
 ```
 
 ## Features
@@ -50,16 +33,10 @@ curl -fsSL "https://raw.githubusercontent.com/zjy365/dockerfile-skill/main/insta
 
 ```
 dockerfile-skill/
-├── .claude-plugin/
-│   └── plugin.json       # Plugin manifest
-├── skills/
-│   └── dockerfile/
-│       ├── SKILL.md      # Skill entry point
-│       ├── modules/      # Analyze → Generate → Build workflow
-│       ├── templates/    # Dockerfile templates by tech stack
-│       └── knowledge/    # Best practices, error patterns
-├── install.sh
-└── README.md
+├── SKILL.md              # Skill entry point
+├── modules/              # Analyze → Generate → Build workflow
+├── templates/            # Dockerfile templates by tech stack
+└── knowledge/            # Best practices, error patterns
 ```
 
 ## License

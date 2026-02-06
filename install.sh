@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# One-liner install:
+# One-liner (global install):
 #   curl -fsSL "https://raw.githubusercontent.com/zjy365/dockerfile-skill/main/install.sh" | bash
 #
+# Project-local install:
+#   CLAUDE_SKILLS_DIR="$(pwd)/.claude/skills" curl -fsSL "https://raw.githubusercontent.com/zjy365/dockerfile-skill/main/install.sh" | bash
+#
 # Overrides:
-#   INSTALL_DIR="$HOME/my-plugins" ... | bash
 #   GITHUB_REPO="owner/repo" ... | bash
+#   SKILL_DIR_NAME="custom-folder-name" ... | bash
 
-INSTALL_DIR="${INSTALL_DIR:-$HOME/.claude/plugins}"
-PLUGIN_NAME="${PLUGIN_NAME:-dockerfile-skill}"
+SKILLS_DIR="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
+SKILL_DIR_NAME="${SKILL_DIR_NAME:-dockerfile-skill}"
 GITHUB_REPO="${GITHUB_REPO:-zjy365/dockerfile-skill}"
 
 # Handle both direct execution and curl | bash (where BASH_SOURCE is empty)
@@ -19,43 +22,18 @@ else
   SCRIPT_DIR=""
 fi
 
-mkdir -p "$INSTALL_DIR"
-DEST="$INSTALL_DIR/$PLUGIN_NAME"
-
-# Check if git is available
-has_git() {
-  command -v git &>/dev/null
-}
+mkdir -p "$SKILLS_DIR"
+DEST="$SKILLS_DIR/$SKILL_DIR_NAME"
 
 install_from_local() {
-  # When run from a local clone of this repo
+  # When run from a local clone of this repo.
   # Skip if SCRIPT_DIR is empty (curl | bash mode)
-  if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/.claude-plugin/plugin.json" ]]; then
+  if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/SKILL.md" ]]; then
     rm -rf "$DEST"
     cp -R "$SCRIPT_DIR" "$DEST"
     echo "Installed from local repo: $DEST"
     return 0
   fi
-  return 1
-}
-
-install_with_git() {
-  local repo="$1"
-
-  if [[ -d "$DEST/.git" ]]; then
-    # Already installed with git, just pull
-    echo "Updating existing installation..."
-    git -C "$DEST" pull --ff-only
-    echo "Updated: $DEST"
-    return 0
-  fi
-
-  rm -rf "$DEST"
-  if git clone --depth 1 "https://github.com/${repo}.git" "$DEST" 2>/dev/null; then
-    echo "Installed from GitHub (git clone): $DEST"
-    return 0
-  fi
-
   return 1
 }
 
@@ -66,19 +44,20 @@ cleanup_tmp() {
 }
 trap cleanup_tmp EXIT
 
-install_from_tarball() {
+install_from_github() {
   local repo="$1"
   _INSTALL_TMP="$(mktemp -d)"
   local tmp="$_INSTALL_TMP"
 
   for ref in main master; do
-    rm -rf "${tmp:?}"/*
+    rm -rf "$tmp"/*
     local url="https://github.com/${repo}/archive/refs/heads/${ref}.tar.gz"
     local tarball="${tmp}/repo.tar.gz"
 
     if curl -fsSL "$url" -o "$tarball"; then
       tar -xzf "$tarball" -C "$tmp"
 
+      # tarball expands to a single top folder like: dockerfile-skill-main/
       local top
       top="$(
         shopt -s nullglob
@@ -86,11 +65,10 @@ install_from_tarball() {
         printf '%s' "${1:-}"
       )"
 
-      if [[ -f "$top/.claude-plugin/plugin.json" ]]; then
+      if [[ -f "$top/SKILL.md" ]]; then
         rm -rf "$DEST"
         cp -R "$top" "$DEST"
-        echo "Installed from GitHub (tarball): $DEST"
-        echo "Note: Install with git for easier updates (git pull)"
+        echo "Installed from GitHub (${repo}@${ref}): $DEST"
         return 0
       fi
     fi
@@ -99,34 +77,23 @@ install_from_tarball() {
   return 1
 }
 
-# Try installation methods in order
 if install_from_local; then
-  :
-elif has_git && install_with_git "$GITHUB_REPO"; then
-  :
-elif install_from_tarball "$GITHUB_REPO"; then
-  :
-else
-  cat >&2 <<EOF
-install.sh error: failed to install plugin.
-
-Tried:
-- Local install (requires .claude-plugin/plugin.json)
-- Git clone from: ${GITHUB_REPO}
-- Tarball download from: ${GITHUB_REPO}
-
-EOF
-  exit 1
+  exit 0
 fi
 
-cat <<EOF
+if install_from_github "$GITHUB_REPO"; then
+  exit 0
+fi
 
-✓ Plugin installed to: $DEST
+cat >&2 <<EOF
+install.sh error: failed to install skill.
 
-To activate, run in Claude Code:
-  /plugin add $DEST
+Tried:
+- Local install (requires SKILL.md next to install.sh)
+- GitHub download from: ${GITHUB_REPO} (main/master)
 
-To update (if installed with git):
-  cd $DEST && git pull
-
+Expected repo layout:
+- SKILL.md at repo root
 EOF
+exit 1
+
