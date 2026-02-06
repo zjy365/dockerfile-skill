@@ -25,13 +25,18 @@ This skill generates production-ready Dockerfiles through a 4-phase process:
 ## Key Capabilities
 
 - **Workspace/Monorepo Support**: pnpm workspace, Turborepo, npm workspaces
+- **Custom CLI Detection**: Auto-detect custom build CLIs (affine, turbo, nx, lerna) and use correct syntax
+- **Git Hash Bypass**: Detect and handle projects requiring git commit hash (GITHUB_SHA)
 - **Build-Time Env Vars**: Auto-detect and add placeholders for Next.js SSG
-- **Error Pattern Database**: 35+ known error patterns with automatic fixes
-- **Smart .dockerignore**: Avoid excluding workspace-required files
+- **Error Pattern Database**: 40+ known error patterns with automatic fixes
+- **Smart .dockerignore**: Avoid excluding workspace-required files and CLI config dependencies
 - **Custom Entry Points**: Support for custom server launchers
 - **Migration Detection**: Auto-detect ORM, migrations, handle standalone mode
 - **Build Optimization**: Skip heavy CI tasks (lint/type-check) to prevent OOM
 - **Runtime Validation**: Verify migrations ran, database populated, app working
+- **Native Module Support**: Auto-detect Rust/NAPI-RS modules, multi-architecture builds
+- **Static Asset Mapping**: Detect backend's expected static paths and map frontend outputs
+- **External Services**: Auto-detect PostgreSQL, Redis, MinIO, ManticoreSearch dependencies
 - **Zero Human Interaction**: Auto-generate all config files including secrets
 
 ## Usage
@@ -173,6 +178,30 @@ Load and execute: [modules/build-fix.md](modules/build-fix.md)
 **Cause**: Next.js standalone doesn't include all node_modules
 **Prevention**: Analysis phase detects standalone + ORM combination
 **Fix**: Install ORM separately in /deps and copy to final image
+
+### 8. Wrong build command for monorepo with custom CLI
+**Symptom**: Build succeeds but output files missing (e.g., `assets-manifest.json` not found)
+**Cause**: Using `yarn workspace @pkg/name build` instead of custom CLI like `yarn affine build -p @pkg/name`
+**Prevention**: Analysis phase Step 14 detects custom CLI
+**Fix**: Use detected CLI syntax for all build commands
+
+### 9. Git hash required but .git not in Docker context
+**Symptom**: `Failed to open git repo` or `nodegit` errors
+**Cause**: Build tool requires git commit hash for versioning
+**Prevention**: Analysis phase Step 14 detects git hash dependency
+**Fix**: Set `ENV GITHUB_SHA=docker-build` to bypass git requirement
+
+### 10. CLI config files excluded by .dockerignore
+**Symptom**: `affine init` or similar CLI init fails silently
+**Cause**: `.prettierrc`, `.prettierignore`, or other config files excluded
+**Prevention**: Analysis phase Step 14 detects config file dependencies
+**Fix**: Remove config files from .dockerignore exclusions
+
+### 11. Static assets not found at runtime
+**Symptom**: `ENOENT: no such file or directory, open '/app/static/assets-manifest.json'`
+**Cause**: Frontend builds to different path than backend expects
+**Prevention**: Analysis phase Step 14 detects static asset path mapping
+**Fix**: Copy frontend outputs to backend's expected path in Dockerfile
 
 ## Success Criteria
 

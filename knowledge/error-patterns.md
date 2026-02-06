@@ -696,6 +696,175 @@ prevention: |
 
 ---
 
+## Category: Custom CLI / Monorepo Build
+
+### Wrong Build Command for Custom CLI
+
+```yaml
+pattern: "ENOENT.*assets-manifest\\.json|build output not found|Missing static files"
+category: custom_cli
+confidence: high
+phase: runtime
+context: "Build succeeded but outputs missing - likely wrong build command"
+fix: |
+  # CRITICAL: Monorepo may use custom CLI instead of yarn workspace
+  # Detection: Check package.json scripts for custom CLI usage
+
+  # Wrong (standard workspace):
+  # RUN yarn workspace @affine/web build
+
+  # Correct (custom CLI - example for AFFiNE):
+  RUN yarn affine build -p @affine/web
+
+  # Correct (Turborepo):
+  RUN yarn turbo run build --filter=@app/web
+
+  # Correct (Nx):
+  RUN yarn nx build web
+prevention: |
+  In analysis phase Step 14:
+  - Detect custom CLI in package.json scripts
+  - Use correct CLI syntax for all build commands
+  - Never assume `yarn workspace <pkg> build` works
+```
+
+### Git Hash Required
+
+```yaml
+pattern: "Failed to open git repo|nodegit.*ENOENT|Repository.*not found|git.*rev-parse.*failed"
+category: custom_cli
+confidence: high
+phase: build
+fix: |
+  # Build tools may require git hash for versioning
+  # In Docker, .git is not available
+
+  # Set environment variable to bypass git requirement
+  ENV GITHUB_SHA=docker-build
+
+  # Or use build arg for custom value:
+  ARG GIT_COMMIT=docker-build
+  ENV GITHUB_SHA=${GIT_COMMIT}
+prevention: |
+  In analysis phase Step 14:
+  - grep for "GITHUB_SHA|Repository|rev-parse" in build tools
+  - Automatically add ENV GITHUB_SHA if detected
+```
+
+### CLI Init/Config File Missing
+
+```yaml
+pattern: "init.*failed|prettier.*not found|Cannot read config file|eslint.*not found|tsconfig.*not found"
+category: custom_cli
+confidence: medium
+phase: build
+fix: |
+  # Custom CLI may depend on config files excluded by .dockerignore
+
+  # Common required config files (check .dockerignore):
+  # - .prettierrc / .prettierignore (code formatting)
+  # - .eslintrc.* / oxlint.json (linting)
+  # - tsconfig.json (TypeScript)
+  # - .editorconfig (editor settings)
+
+  # Fix: Comment out exclusions in .dockerignore
+  # Example:
+  # .prettierignore  <- Comment this out
+  # .prettierrc      <- Comment this out
+prevention: |
+  In analysis phase Step 14:
+  - Detect which config files CLI depends on
+  - Ensure they are NOT in .dockerignore
+```
+
+### Static Assets Path Mismatch
+
+```yaml
+pattern: "ENOENT.*static.*manifest|webAssets.*not found|Cannot find static directory"
+category: custom_cli
+confidence: high
+phase: runtime
+fix: |
+  # Backend code hardcodes expected static asset paths
+  # Must copy frontend outputs to correct locations
+
+  # Example for AFFiNE:
+  COPY --from=builder /app/packages/frontend/apps/web/dist ./static
+  COPY --from=builder /app/packages/frontend/apps/mobile/dist ./static/mobile
+  COPY --from=builder /app/packages/frontend/admin/dist ./static/admin
+
+  # Detection: Search backend code for static path references
+  # grep -rE "projectRoot.*static|assets-manifest" packages/backend/
+prevention: |
+  In analysis phase Step 14:
+  - Detect backend's expected static paths
+  - Map frontend output paths to expected locations
+  - Generate correct COPY commands in Dockerfile
+```
+
+---
+
+## Category: Rust/Native Module Build
+
+### Rust Toolchain Missing
+
+```yaml
+pattern: "cargo.*not found|rustc.*not found|error: no default toolchain configured"
+category: native_module
+confidence: high
+phase: build
+fix: |
+  # Install Rust toolchain in build stage
+  ENV RUSTUP_HOME=/usr/local/rustup \
+      CARGO_HOME=/usr/local/cargo \
+      PATH=/usr/local/cargo/bin:$PATH
+
+  RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+```
+
+### Wrong Rust Target
+
+```yaml
+pattern: "error: linking with.*failed|unknown target triple|can't find crate"
+category: native_module
+confidence: high
+phase: build
+fix: |
+  # Must use correct target for container architecture
+  ARG TARGETARCH
+
+  RUN if [ "$TARGETARCH" = "arm64" ]; then \
+          rustup target add aarch64-unknown-linux-gnu && \
+          yarn workspace @pkg/native build --target aarch64-unknown-linux-gnu; \
+      else \
+          rustup target add x86_64-unknown-linux-gnu && \
+          yarn workspace @pkg/native build --target x86_64-unknown-linux-gnu; \
+      fi
+```
+
+### NAPI-RS Build Dependencies Missing
+
+```yaml
+pattern: "napi.*build failed|tree-sitter.*error|clang.*not found"
+category: native_module
+confidence: high
+phase: build
+fix: |
+  # NAPI-RS and tree-sitter require clang
+  RUN apt-get update && apt-get install -y --no-install-recommends \
+      clang \
+      llvm \
+      pkg-config \
+      libssl-dev \
+      && rm -rf /var/lib/apt/lists/*
+
+  # Set clang for compatibility
+  ENV CC="clang -D_BSD_SOURCE" \
+      TARGET_CC="clang -D_BSD_SOURCE"
+```
+
+---
+
 ## Unknown Error Fallback
 
 If no pattern matches:

@@ -366,6 +366,135 @@ Heavy Operations to Skip:
 # - Only running essential build steps: prebuild + next build
 ```
 
+#### Custom CLI Build Rules (L3 Monorepo)
+
+**CRITICAL**: Many monorepos use custom CLI tools. Using standard `yarn workspace` commands causes silent failures.
+
+**Detection** (from analysis phase Step 14):
+```yaml
+custom_cli:
+  detected: true
+  name: "${CLI_NAME}"           # Detected CLI name (e.g., turbo, nx, custom name)
+  build_syntax: "${BUILD_CMD}"  # Detected build command syntax
+```
+
+**Build Command Generation**:
+
+1. **If custom CLI detected**, use the detected CLI syntax from analysis:
+   ```dockerfile
+   # Use the exact build_syntax from analysis.custom_cli
+   RUN ${analysis.custom_cli.build_syntax}
+   ```
+
+   Common CLI patterns (for reference):
+   ```dockerfile
+   # Turborepo pattern: turbo run <task> --filter=<package>
+   RUN yarn turbo run build --filter=@scope/web
+
+   # Nx pattern: nx <task> <project>
+   RUN yarn nx build web
+
+   # Lerna pattern: lerna run <task> --scope=<package>
+   RUN yarn lerna run build --scope=@scope/web
+
+   # Custom CLI pattern (varies by project)
+   RUN yarn ${CLI_NAME} build -p @scope/package
+   ```
+
+2. **If git hash required** (`analysis.custom_cli.git_hash_required == true`), set bypass:
+   ```dockerfile
+   # Set BEFORE build commands
+   ENV ${analysis.custom_cli.git_hash_env}=docker-build
+   # Common: ENV GITHUB_SHA=docker-build
+   ```
+
+3. **If config files required**, ensure NOT in .dockerignore:
+   ```dockerfile
+   # Copy config files detected as CLI dependencies
+   # Files from: analysis.custom_cli.config_files
+   COPY ${config_file} ./
+   ```
+
+4. **Map static assets** based on analysis:
+   ```dockerfile
+   # Copy frontend builds to where backend expects
+   # Source: analysis.custom_cli.static_assets.frontend_outputs
+   # Dest: analysis.custom_cli.static_assets.backend_expects
+   COPY --from=builder /app/${frontend_output} ./${backend_expects}
+   ```
+
+**Detection Logic** (what analyze.md Step 14 provides):
+```yaml
+# Analysis output example:
+custom_cli:
+  detected: true
+  name: "turbo"
+  entry: "node_modules/.bin/turbo"
+  build_syntax: "yarn turbo run build --filter=@scope/web"
+
+  dependencies:
+    git_hash_required: false
+    config_files: []
+
+  static_assets:
+    backend_expects: "public"
+    frontend_outputs:
+      - src: "apps/web/dist"
+        dest: "public"
+```
+
+**WRONG patterns to avoid**:
+```dockerfile
+# WRONG: Using standard workspace command when custom CLI exists
+RUN yarn workspace @scope/web build  # May fail or produce wrong output
+
+# WRONG: Assuming build output locations without checking
+COPY --from=builder /app/.next ./  # May not exist for custom build system
+```
+
+**Key Principle**: ALWAYS use the build command from `analysis.custom_cli.build_syntax`. Never assume standard patterns work.
+
+#### Rust/Native Module Build Stage
+
+**When `analysis.native_modules.rust_required == true`**:
+
+```dockerfile
+# Separate native-builder stage
+FROM builder AS native-builder
+
+WORKDIR /app
+
+# Install Rust toolchain
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+
+# Install build dependencies for NAPI-RS
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    clang \
+    llvm \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set clang for tree-sitter compatibility
+ENV CC="clang -D_BSD_SOURCE" \
+    TARGET_CC="clang -D_BSD_SOURCE"
+
+# Build for correct architecture
+ARG TARGETARCH
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    if [ "$TARGETARCH" = "arm64" ] || [ "$(uname -m)" = "aarch64" ]; then \
+        rustup target add aarch64-unknown-linux-gnu && \
+        yarn workspace @pkg/native build --target aarch64-unknown-linux-gnu; \
+    else \
+        rustup target add x86_64-unknown-linux-gnu && \
+        yarn workspace @pkg/native build --target x86_64-unknown-linux-gnu; \
+    fi
+```
+
 #### Monorepo Special Rules (L3)
 
 1. For Turborepo:
@@ -551,34 +680,161 @@ scripts/readmeWorkflow
 
 ### 3. docker-compose.yml (if external services)
 
+**Auto-Detection Rules** (from analysis phase Step 5):
+
+Based on `analysis.dependencies.external_services`, generate appropriate service blocks:
+
+```yaml
+# Service detection patterns:
+postgres:
+  detection: "DATABASE_URL|POSTGRES_|prisma|drizzle|typeorm"
+  check_for_vector: "pgvector|vector.*embedding"  # Use pgvector if detected
+
+redis:
+  detection: "REDIS_|ioredis|redis|bull|bullmq"
+
+s3/minio:
+  detection: "S3_|MINIO_|AWS_S3|@aws-sdk/client-s3"
+
+search_engines:
+  elasticsearch: "ELASTIC_|elasticsearch|@elastic"
+  meilisearch: "MEILI_|meilisearch"
+  manticore: "MANTICORE|manticoresearch"
+```
+
+**Template Generation**:
+
 ```yaml
 services:
- app:
-  build: .
-  ports:
-   - "${PORT:-3000}:${PORT:-3000}"
-  environment:
-   - DATABASE_URL=postgres://postgres:postgres@db:5432/app
-  depends_on:
-   db:
-    condition: service_healthy
+  # Main application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ${PROJECT_NAME}-server
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:${APP_PORT:-3000}"
+    environment:
+      # Auto-generated based on detected services
+      - DATABASE_URL=postgres://${DB_USER:-app}:${DB_PASS:-app}@postgres:5432/${DB_NAME:-app}
+      - REDIS_URL=redis://redis:6379
+      # ... other env vars from analysis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${APP_PORT}/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - app-network
 
- db:
-  image: postgres:16-alpine
-  environment:
-   POSTGRES_PASSWORD: postgres
-   POSTGRES_DB: app
-  volumes:
-   - pgdata:/var/lib/postgresql/data
-  healthcheck:
-   test: ["CMD-SHELL", "pg_isready -U postgres"]
-   interval: 5s
-   timeout: 5s
-   retries: 5
+  # PostgreSQL (if detected)
+  # Use pgvector/pgvector:pg16 if vector search detected
+  # Use postgres:16-alpine otherwise
+  postgres:
+    image: ${POSTGRES_IMAGE}  # pgvector/pgvector:pg16 or postgres:16-alpine
+    container_name: ${PROJECT_NAME}-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${DB_USER:-app}
+      - POSTGRES_PASSWORD=${DB_PASS:-app}
+      - POSTGRES_DB=${DB_NAME:-app}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-app} -d ${DB_NAME:-app}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - app-network
+
+  # Redis (if detected)
+  redis:
+    image: redis:7-alpine
+    container_name: ${PROJECT_NAME}-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  # MinIO (if S3 detected and MINIO preferred)
+  minio:
+    image: minio/minio:latest
+    container_name: ${PROJECT_NAME}-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_USER:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_PASS:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - app-network
+
+  # ManticoreSearch (if detected)
+  manticore:
+    image: manticoresearch/manticore:latest
+    container_name: ${PROJECT_NAME}-manticore
+    restart: unless-stopped
+    volumes:
+      - manticore-data:/var/lib/manticore
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9308"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
 
 volumes:
- pgdata:
+  pgdata:
+    driver: local
+  redis-data:
+    driver: local
+  minio-data:
+    driver: local
+  manticore-data:
+    driver: local
 ```
+
+**Generation Logic**:
+
+1. Start with base template (app service only)
+2. For each detected service in `analysis.dependencies.external_services`:
+   - Add the corresponding service block
+   - Add to app's `depends_on` with health check condition
+   - Add corresponding volume
+   - Add environment variables to app service
+3. Only include services that were detected
+4. Use appropriate image variants (e.g., pgvector vs postgres)
 
 ### 4. Environment Documentation
 

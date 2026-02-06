@@ -81,21 +81,128 @@ Common defaults:
 
 ### Step 5: Detect External Services
 
-Search for environment variable patterns:
+**Purpose**: Auto-detect required external services for docker-compose generation.
+
+**Detection Method**:
 
 ```bash
-# Database
-grep -rE "DATABASE_URL|POSTGRES_|MYSQL_|MONGODB_URI" .
+# ============================================
+# Database Detection
+# ============================================
+
+# PostgreSQL
+if grep -rqE "DATABASE_URL|POSTGRES_|postgres:|pg_|prisma|drizzle|typeorm" . 2>/dev/null; then
+  DB_TYPE="postgres"
+
+  # Check for vector extension requirement
+  if grep -rqE "pgvector|vector.*embedding|createIndex.*vector" . 2>/dev/null; then
+    DB_IMAGE="pgvector/pgvector:pg16"
+  else
+    DB_IMAGE="postgres:16-alpine"
+  fi
+fi
+
+# MySQL
+if grep -rqE "MYSQL_|mysql:|mysql2" . 2>/dev/null; then
+  DB_TYPE="mysql"
+  DB_IMAGE="mysql:8.0"
+fi
+
+# MongoDB
+if grep -rqE "MONGODB_|mongodb:|mongoose" . 2>/dev/null; then
+  DB_TYPE="mongodb"
+  DB_IMAGE="mongo:7"
+fi
+
+# ============================================
+# Cache/Queue Detection
+# ============================================
 
 # Redis
-grep -rE "REDIS_URL|REDIS_HOST" .
+if grep -rqE "REDIS_|ioredis|redis:|bull|bullmq|@upstash/redis" . 2>/dev/null; then
+  REDIS_REQUIRED=true
+  REDIS_IMAGE="redis:7-alpine"
+fi
 
-# S3/Object Storage
-grep -rE "S3_|AWS_|MINIO_" .
+# RabbitMQ
+if grep -rqE "RABBITMQ_|amqp:|amqplib" . 2>/dev/null; then
+  RABBITMQ_REQUIRED=true
+  RABBITMQ_IMAGE="rabbitmq:3-management-alpine"
+fi
 
-# Message Queue
-grep -rE "RABBITMQ_|KAFKA_|AMQP_" .
+# ============================================
+# Object Storage Detection
+# ============================================
+
+# S3/MinIO
+if grep -rqE "S3_|MINIO_|@aws-sdk/client-s3|aws-sdk.*S3" . 2>/dev/null; then
+  S3_REQUIRED=true
+  # Default to MinIO for self-hosted
+  S3_IMAGE="minio/minio:latest"
+fi
+
+# ============================================
+# Search Engine Detection
+# ============================================
+
+# Elasticsearch
+if grep -rqE "ELASTIC_|elasticsearch|@elastic/elasticsearch" . 2>/dev/null; then
+  SEARCH_TYPE="elasticsearch"
+  SEARCH_IMAGE="elasticsearch:8.11.0"
+fi
+
+# Meilisearch
+if grep -rqE "MEILI_|meilisearch" . 2>/dev/null; then
+  SEARCH_TYPE="meilisearch"
+  SEARCH_IMAGE="getmeili/meilisearch:v1.5"
+fi
+
+# ManticoreSearch
+if grep -rqE "MANTICORE|manticoresearch|INDEXER_SEARCH_PROVIDER.*manticore" . 2>/dev/null; then
+  SEARCH_TYPE="manticore"
+  SEARCH_IMAGE="manticoresearch/manticore:latest"
+fi
 ```
+
+**Output**:
+```yaml
+external_services:
+  database:
+    type: "${DB_TYPE}"              # postgres | mysql | mongodb | none
+    image: "${DB_IMAGE}"            # Recommended Docker image
+    env_var: "DATABASE_URL"         # Primary connection env var
+    has_vector: true | false        # If pgvector needed
+
+  redis:
+    required: ${REDIS_REQUIRED}
+    image: "${REDIS_IMAGE}"
+    env_var: "REDIS_URL"
+
+  s3:
+    required: ${S3_REQUIRED}
+    image: "${S3_IMAGE}"
+    provider: "minio | aws | custom"
+    env_vars:
+      - "S3_ENDPOINT"
+      - "S3_ACCESS_KEY"
+      - "S3_SECRET_KEY"
+
+  search:
+    type: "${SEARCH_TYPE}"          # elasticsearch | meilisearch | manticore | none
+    image: "${SEARCH_IMAGE}"
+    env_var: "${SEARCH_ENV_VAR}"
+
+  message_queue:
+    type: "rabbitmq | kafka | none"
+    image: "${MQ_IMAGE}"
+```
+
+**docker-compose Generation Rules**:
+- Only include services that were detected
+- Use detected image variants (e.g., pgvector vs postgres)
+- Set appropriate health checks for each service
+- Configure proper networking between services
+- Generate environment variable templates
 
 ### Step 6: Detect System Library Requirements
 
@@ -409,7 +516,237 @@ build_complexity:
   rationale: "Skip lint/type-check/sitemap to reduce memory from 12GB+ to 4GB"
 ```
 
-### Step 14: Determine Complexity Level
+### Step 14: Detect Custom CLI Tools
+
+**Purpose**: Many monorepos use custom CLI tools instead of standard workspace commands.
+Using the wrong build command is a common cause of failure.
+
+**Why This Matters**:
+- Standard `yarn workspace @pkg build` may not work
+- Custom CLI may require specific flags/syntax
+- Build outputs may go to non-standard locations
+- CLI may depend on git hash, config files, or initialization scripts
+
+**Detection Method**:
+
+```bash
+# Step 1: Detect well-known monorepo CLIs
+KNOWN_CLIS=("turbo" "nx" "lerna" "rush")
+for cli in "${KNOWN_CLIS[@]}"; do
+  if [ -f "node_modules/.bin/$cli" ] || grep -q "\"$cli\"" package.json; then
+    CLI_NAME="$cli"
+    CLI_TYPE="standard"
+    break
+  fi
+done
+
+# Step 2: Detect custom CLI in root package.json scripts
+# Look for scripts that invoke a single command (potential CLI)
+CUSTOM_CLI=$(jq -r '.scripts | to_entries[] | select(.key | test("^[a-z]+$")) | select(.value | test("^[a-z]+ ")) | .key' package.json 2>/dev/null | head -1)
+if [ -n "$CUSTOM_CLI" ] && [ "$CLI_TYPE" != "standard" ]; then
+  CLI_NAME="$CUSTOM_CLI"
+  CLI_TYPE="custom"
+fi
+
+# Step 3: Check for CLI definition in tools/ or scripts/
+for dir in "tools/cli" "tools/scripts" "scripts/cli"; do
+  if [ -d "$dir" ]; then
+    CLI_ENTRY=$(find "$dir" -name "*.js" -o -name "*.ts" | head -1)
+    if [ -n "$CLI_ENTRY" ]; then
+      CLI_TYPE="custom"
+      break
+    fi
+  fi
+done
+
+# Step 4: Analyze how packages are built
+# Check if individual packages use CLI internally
+for pkg_json in packages/*/package.json apps/*/package.json; do
+  if [ -f "$pkg_json" ]; then
+    BUILD_CMD=$(jq -r '.scripts.build // ""' "$pkg_json")
+    if [ -n "$BUILD_CMD" ] && ! echo "$BUILD_CMD" | grep -qE "^(tsc|webpack|next|vite|esbuild)"; then
+      # Non-standard build command, might use custom CLI
+      CUSTOM_BUILD_DETECTED=true
+    fi
+  fi
+done
+
+# Step 5: Determine build syntax by examining usage patterns
+if [ "$CLI_TYPE" = "standard" ]; then
+  case "$CLI_NAME" in
+    turbo) BUILD_SYNTAX="yarn turbo run build --filter=\${PACKAGE}" ;;
+    nx)    BUILD_SYNTAX="yarn nx build \${PROJECT}" ;;
+    lerna) BUILD_SYNTAX="yarn lerna run build --scope=\${PACKAGE}" ;;
+    rush)  BUILD_SYNTAX="rush build -t \${PACKAGE}" ;;
+  esac
+elif [ "$CLI_TYPE" = "custom" ]; then
+  # Analyze CLI source or README to determine syntax
+  # Common patterns: -p for package, --filter, positional argument
+  if grep -rqE "\-p.*package|--package" tools/ 2>/dev/null; then
+    BUILD_SYNTAX="yarn $CLI_NAME build -p \${PACKAGE}"
+  else
+    BUILD_SYNTAX="yarn $CLI_NAME build \${PACKAGE}"
+  fi
+fi
+```
+
+**Git Hash Dependency Detection**:
+```bash
+# Check if build requires git hash
+GIT_HASH_REQUIRED=false
+GIT_HASH_ENV=""
+
+# Common patterns for git hash usage
+if grep -rqE "GITHUB_SHA|GIT_COMMIT|GIT_SHA|COMMIT_HASH" tools/ src/ scripts/ 2>/dev/null; then
+  GIT_HASH_REQUIRED=true
+  GIT_HASH_ENV=$(grep -rohE "(GITHUB_SHA|GIT_COMMIT|GIT_SHA|COMMIT_HASH)" tools/ src/ scripts/ 2>/dev/null | sort -u | head -1)
+fi
+
+# Check for nodegit, simple-git, or git command usage
+if grep -rqE "nodegit|simple-git|Repository.*open|git.*rev-parse" tools/ src/ 2>/dev/null; then
+  GIT_HASH_REQUIRED=true
+  [ -z "$GIT_HASH_ENV" ] && GIT_HASH_ENV="GITHUB_SHA"
+fi
+```
+
+**Configuration File Dependencies**:
+```bash
+# Detect which config files the CLI/build system depends on
+CONFIG_DEPS=()
+
+# Check for prettier dependency
+if grep -rqE "prettier|\.prettierrc" tools/ scripts/ 2>/dev/null; then
+  [ -f ".prettierrc" ] && CONFIG_DEPS+=(".prettierrc")
+  [ -f ".prettierignore" ] && CONFIG_DEPS+=(".prettierignore")
+fi
+
+# Check for eslint/oxlint dependency
+if grep -rqE "eslint|oxlint" tools/ scripts/ 2>/dev/null; then
+  [ -f ".eslintrc.js" ] && CONFIG_DEPS+=(".eslintrc.js")
+  [ -f "oxlint.json" ] && CONFIG_DEPS+=("oxlint.json")
+fi
+
+# Check for tsconfig dependency (almost always needed)
+if grep -rqE "tsconfig|typescript" tools/ scripts/ 2>/dev/null; then
+  [ -f "tsconfig.json" ] && CONFIG_DEPS+=("tsconfig.json")
+fi
+
+# Check postinstall script for init commands
+POSTINSTALL=$(jq -r '.scripts.postinstall // ""' package.json)
+if [ -n "$POSTINSTALL" ]; then
+  POSTINSTALL_RUNS_INIT=true
+fi
+```
+
+**Static Assets Path Detection**:
+```bash
+# Detect where backend expects static files
+BACKEND_STATIC_PATH=""
+FRONTEND_OUTPUTS=()
+
+# Search for static path references in backend code
+STATIC_REFS=$(grep -rohE "(static|public|dist|assets).*manifest|readHtmlAssets|webAssets" packages/backend/ src/server/ 2>/dev/null)
+if [ -n "$STATIC_REFS" ]; then
+  BACKEND_STATIC_PATH=$(echo "$STATIC_REFS" | grep -oE "(static|public)" | head -1)
+fi
+
+# Detect frontend build output directories
+for frontend_dir in packages/frontend/*/dist apps/*/dist packages/*/.next; do
+  if [ -d "$frontend_dir" ] 2>/dev/null || grep -q "output.*dist" "$(dirname $frontend_dir)/package.json" 2>/dev/null; then
+    FRONTEND_OUTPUTS+=("$frontend_dir")
+  fi
+done
+```
+
+**Output**:
+```yaml
+custom_cli:
+  detected: true
+  name: "${CLI_NAME}"                    # Detected CLI name
+  type: "${CLI_TYPE}"                    # standard | custom
+  entry: "${CLI_ENTRY}"                  # Path to CLI entry point (if custom)
+
+  build_syntax: "${BUILD_SYNTAX}"        # Complete build command template
+  # The ${PACKAGE} placeholder should be replaced with actual package names
+
+  packages_to_build:                     # Detected packages that need building
+    - name: "@scope/web"
+      build_cmd: "yarn ${CLI_NAME} build -p @scope/web"
+      output_dir: "packages/web/dist"
+    - name: "@scope/server"
+      build_cmd: "yarn ${CLI_NAME} build -p @scope/server"
+      output_dir: "packages/server/dist"
+
+  dependencies:
+    git_hash_required: ${GIT_HASH_REQUIRED}
+    git_hash_env: "${GIT_HASH_ENV}"      # e.g., GITHUB_SHA, GIT_COMMIT
+    git_hash_fallback: "docker-build"
+
+    config_files: ${CONFIG_DEPS}         # Files that must NOT be in .dockerignore
+    # e.g., [".prettierrc", ".prettierignore", "tsconfig.json"]
+
+    postinstall_runs_init: ${POSTINSTALL_RUNS_INIT}
+
+  static_assets:
+    backend_expects: "${BACKEND_STATIC_PATH}"  # e.g., "static", "public"
+    frontend_outputs: ${FRONTEND_OUTPUTS}       # Source paths to copy from
+    # Generation phase will create COPY commands to map outputs to expected paths
+```
+
+**Warning Conditions**:
+- `custom_cli.detected == true` AND analysis uses `yarn workspace` → **CRITICAL: Wrong build command**
+- `git_hash_required == true` AND git_hash_env not set in Dockerfile → **Build will fail**
+- `config_files` items found in `.dockerignore` → **CLI init will fail**
+- `frontend_outputs` != `backend_expects` → **Runtime ENOENT errors**
+
+**Key Principle**:
+The goal is to DETECT the patterns, not hardcode specific project names. The detection should work for ANY monorepo by analyzing:
+1. What CLI is being used (by checking scripts, dependencies, and file structure)
+2. What syntax that CLI requires (by analyzing CLI source or documentation)
+3. What dependencies the build system has (git hash, config files, etc.)
+4. Where outputs are generated and expected (static asset mapping)
+
+### Step 15: Detect Rust/Native Module Requirements
+
+**Purpose**: Some projects include Rust native modules that require special build setup.
+
+**Detection Method**:
+```bash
+# 1. Check for Cargo files
+if [ -f "Cargo.toml" ] || ls packages/*/Cargo.toml 2>/dev/null; then
+  HAS_RUST=true
+fi
+
+# 2. Check for napi-rs dependencies
+if grep -qE "@napi-rs|napi-derive" package.json Cargo.toml 2>/dev/null; then
+  HAS_NAPI_RS=true
+fi
+
+# 3. Detect native package location
+NATIVE_PACKAGES=$(find packages -name "Cargo.toml" -exec dirname {} \;)
+```
+
+**Output**:
+```yaml
+native_modules:
+  rust_required: true
+  napi_rs: true
+  packages:
+    - path: "packages/backend/native"
+      name: "@affine/server-native"
+      build_command: "yarn workspace @affine/server-native build"
+      targets:
+        - "x86_64-unknown-linux-gnu"
+        - "aarch64-unknown-linux-gnu"
+
+  build_dependencies:
+    - clang
+    - llvm
+    - pkg-config
+    - libssl-dev
+```
+
+### Step 16: Determine Complexity Level
 
 **L1 (Simple)**:
 - Single language
