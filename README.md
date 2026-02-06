@@ -5,11 +5,7 @@ A Claude Code skill that generates production-ready Dockerfiles with automatic b
 ## Install
 
 ```bash
-# Global (recommended)
 curl -fsSL "https://raw.githubusercontent.com/zjy365/dockerfile-skill/main/install.sh" | bash
-
-# Project-local
-CLAUDE_SKILLS_DIR="$(pwd)/.claude/skills" curl -fsSL "https://raw.githubusercontent.com/zjy365/dockerfile-skill/main/install.sh" | bash
 ```
 
 ## Usage
