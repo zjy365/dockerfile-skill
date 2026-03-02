@@ -405,3 +405,156 @@ Build completed with issues after 3 iterations.
 ### Partial Output
 The best version of Dockerfile is saved. It may work with additional configuration.
 ```
+
+## Artifact Output
+
+After completing all build iterations AND all runtime validation steps (Phase 3 + Phase 4),
+write two artifact files to the `docker-build/` directory.
+
+### Phase 3: Build Result
+
+**File**: `docker-build/build-result.json`
+
+**Instructions**:
+1. Write this file after the build loop completes (whether success or failure)
+2. Create the `docker-build/` directory if it does not exist: `Bash: mkdir -p docker-build`
+3. `outcome`: `"success"` | `"partial_success"` (max iterations reached but last Dockerfile saved) | `"failed"`
+4. `iterations`: one entry per docker build execution, with `status`, `error_category`,
+   `error_excerpt` (first 200 chars of error), `fix_applied`, `duration_seconds`
+5. `fixes_applied`: only include iterations where a fix was applied
+6. `errors_not_matched`: include the raw error text for any error where no pattern from
+   `knowledge/error-patterns.md` matched — these are candidates for new patterns
+7. `build.image_size_mb`: capture from `docker images` output after successful build
+
+**Schema**:
+
+```json
+{
+  "schema_version": "1.0",
+  "generated_at": "<ISO-8601 timestamp>",
+  "phase": "build",
+  "outcome": "success",
+  "iterations": [
+    {
+      "iteration": 1,
+      "status": "failed",
+      "error_category": "env_var_missing",
+      "error_excerpt": "KEY_VAULTS_SECRET is not set",
+      "fix_applied": "Added ARG KEY_VAULTS_SECRET=build-placeholder with ENV",
+      "duration_seconds": 47
+    },
+    {
+      "iteration": 2,
+      "status": "success",
+      "error_category": null,
+      "error_excerpt": null,
+      "fix_applied": null,
+      "duration_seconds": 184
+    }
+  ],
+  "total_iterations": 2,
+  "max_iterations_allowed": 5,
+  "complexity_level": "L3",
+  "build": {
+    "command": "DOCKER_BUILDKIT=1 docker build -t test-build:latest .",
+    "image_name": "test-build:latest",
+    "image_size_mb": 1420,
+    "image_size_human": "1.42GB",
+    "exit_code": 0
+  },
+  "fixes_applied": [
+    {
+      "iteration": 1,
+      "pattern_matched": "env_var_missing",
+      "error": "KEY_VAULTS_SECRET is not set",
+      "fix": "Added ARG/ENV placeholder for KEY_VAULTS_SECRET in build stage"
+    }
+  ],
+  "errors_not_matched": []
+}
+```
+
+### Phase 4: Validation Result
+
+**File**: `docker-build/validation-result.json`
+
+**Instructions**:
+1. Write this file after ALL validation steps (Steps 1–4 of Post-Build Validation) complete
+2. If build failed entirely, still write this file with `outcome: "skipped"` and all checklist items false
+3. `migration.applicable`: set to `false` if `analysis.migration_system.detected == false`
+4. `http_health.acceptable`: true if HTTP code is 200, 302, or 401; false if 500, 502, 503
+5. `checklist`: each boolean maps directly to a checkbox in the Validation Checklist above
+6. `summary`: one sentence describing the overall outcome
+
+**Schema**:
+
+```json
+{
+  "schema_version": "1.0",
+  "generated_at": "<ISO-8601 timestamp>",
+  "phase": "validation",
+  "outcome": "success",
+  "container_startup": {
+    "status": "healthy",
+    "compose_command": "docker-compose up -d",
+    "wait_seconds": 30,
+    "all_containers_up": true,
+    "crash_detected": false
+  },
+  "migration": {
+    "applicable": true,
+    "orm": "drizzle",
+    "expected_count": 76,
+    "actual_count": 76,
+    "tables_exist": true,
+    "tables_verified": ["users", "sessions", "messages", "agents"],
+    "status": "success",
+    "verification_command": "docker-compose exec postgres psql -U app -d app -c \"\\dt\""
+  },
+  "http_health": {
+    "url": "http://localhost:3210",
+    "http_code": 302,
+    "acceptable": true,
+    "notes": "302 redirect to /signin — expected for unauthenticated request"
+  },
+  "log_analysis": {
+    "error_count": 0,
+    "migration_errors": [],
+    "critical_errors": [],
+    "warnings": []
+  },
+  "checklist": {
+    "image_built": true,
+    "container_started": true,
+    "database_connected": true,
+    "migrations_executed": true,
+    "tables_created": true,
+    "http_valid_response": true,
+    "no_runtime_errors": true,
+    "healthcheck_passed": true
+  },
+  "summary": "All validation checks passed. App is fully operational."
+}
+```
+
+If the build failed entirely (Phase 3 outcome = `"failed"`), write this file with:
+```json
+{
+  "schema_version": "1.0",
+  "generated_at": "<ISO-8601 timestamp>",
+  "phase": "validation",
+  "outcome": "skipped",
+  "reason": "Build failed — validation cannot proceed without a working image",
+  "checklist": {
+    "image_built": false,
+    "container_started": false,
+    "database_connected": false,
+    "migrations_executed": false,
+    "tables_created": false,
+    "http_valid_response": false,
+    "no_runtime_errors": false,
+    "healthcheck_passed": false
+  },
+  "summary": "Validation skipped because the Docker image failed to build."
+}
+```

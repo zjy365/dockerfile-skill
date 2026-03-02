@@ -1061,3 +1061,130 @@ analysis:
   - "CRITICAL: Migration system detected - must handle ORM dependencies separately"
   - "Build script includes heavy operations - optimize to prevent OOM"
 ```
+
+## Artifact Output
+
+After completing all 17 analysis steps and displaying the analysis summary in conversation,
+write the structured artifact to disk:
+
+**File**: `docker-build/analysis.json`
+
+**Instructions**:
+1. Create the `docker-build/` directory if it does not exist: `Bash: mkdir -p docker-build`
+2. Write the JSON file using the Write tool with path `docker-build/analysis.json`
+3. Populate all fields from the analysis results gathered in Steps 1–17
+4. Set `generated_at` to current ISO-8601 timestamp
+5. Set `detection_steps_completed` to 17 (or the actual count if any steps were skipped)
+
+**Schema**:
+
+```json
+{
+  "schema_version": "1.0",
+  "generated_at": "<ISO-8601 timestamp>",
+  "phase": "analysis",
+  "project": {
+    "language": "typescript",
+    "framework": "nextjs",
+    "framework_version": "14.x",
+    "package_manager": "pnpm",
+    "package_manager_version": "10.20.0"
+  },
+  "package_manager_config": {
+    "lockfile_disabled": false,
+    "config_file": ".npmrc",
+    "install_command": "pnpm install --frozen-lockfile"
+  },
+  "workspace": {
+    "enabled": true,
+    "type": "pnpm",
+    "config_file": "pnpm-workspace.yaml",
+    "packages": ["packages/**", "apps/**"],
+    "patches_dir": "patches",
+    "package_count": 39
+  },
+  "build": {
+    "command": "npm run build",
+    "resolved_command": "npx tsx scripts/prebuild.mts && npx next build --webpack",
+    "output_dir": ".next",
+    "standalone_mode": true,
+    "env_required": [
+      { "name": "KEY_VAULTS_SECRET", "placeholder": "build-placeholder-32chars" }
+    ]
+  },
+  "run": {
+    "command": "node server.js",
+    "entry_point": "scripts/serverLauncher/startServer.js",
+    "port": 3210,
+    "env_required": ["DATABASE_URL", "KEY_VAULTS_SECRET", "AUTH_SECRET"]
+  },
+  "external_services": {
+    "database": {
+      "type": "postgres",
+      "image": "pgvector/pgvector:pg16",
+      "env_var": "DATABASE_URL",
+      "has_vector": true
+    },
+    "redis": { "required": false },
+    "s3": { "required": false },
+    "search": { "type": "none" },
+    "message_queue": { "type": "none" }
+  },
+  "system_libs": [
+    { "npm_package": "sharp", "apt_packages": ["libvips-dev"] }
+  ],
+  "migration_system": {
+    "detected": true,
+    "orm": "drizzle",
+    "migration_dir": "packages/database/migrations",
+    "migration_count": 76,
+    "execution_timing": "runtime",
+    "execution_command": "npx drizzle-kit migrate",
+    "execution_env_var": "MIGRATION_DB=1",
+    "standalone_with_orm": true,
+    "requires_separate_deps": true,
+    "warnings": [
+      "Next.js standalone mode + Drizzle ORM - must install drizzle-orm separately",
+      "76 migration files - ensure runtime execution before first request"
+    ]
+  },
+  "build_complexity": {
+    "original_build_script": "npm run prebuild && next build",
+    "heavy_operations": [
+      { "name": "lint", "essential": false, "recommendation": "Skip in Docker" },
+      { "name": "type-check", "essential": false, "recommendation": "Skip in Docker" }
+    ],
+    "workspace_package_count": 39,
+    "memory_risk": "high",
+    "docker_build_command": "npx tsx scripts/prebuild.mts && npx next build --webpack",
+    "memory_limit": "NODE_OPTIONS=--max-old-space-size=8192",
+    "skipped_commands": [
+      { "command": "npm run lint", "reason": "Config file .eslintrc.js excluded in .dockerignore" }
+    ]
+  },
+  "custom_cli": { "detected": false },
+  "native_modules": { "rust_required": false },
+  "complexity": "L3",
+  "max_iterations": 5,
+  "existing_docker": {
+    "has_dockerfile": false,
+    "has_compose": false,
+    "has_dockerignore": false
+  },
+  "warnings": [
+    "CRITICAL: Migration system detected - must handle ORM dependencies separately"
+  ],
+  "detection_steps_completed": 17
+}
+```
+
+The top-level keys are: `schema_version`, `generated_at`, `phase`, `project`, `package_manager_config`,
+`workspace`, `build`, `run`, `external_services`, `system_libs`, `migration_system`,
+`build_complexity`, `custom_cli`, `native_modules`, `complexity`, `max_iterations`,
+`existing_docker`, `warnings`, `detection_steps_completed`.
+
+Populate each key from the corresponding analysis step results. Use actual detected values — the JSON
+example above is illustrative (based on a Next.js monorepo) and your output must reflect the actual project.
+
+**Note**: This file is written to `docker-build/` to keep artifacts separate from the generated
+Docker files (Dockerfile, .dockerignore, etc.) which remain at the project root.
