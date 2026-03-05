@@ -65,7 +65,7 @@ Paths used in pipeline.md follow the pattern:
 
 | Phase | Action | Skip When |
 |-------|--------|-----------|
-| 0 — Preflight | Docker + Docker Hub + Sealos auth | All checks pass |
+| 0 — Preflight | Docker + Sealos auth (Docker Hub deferred to Phase 4) | All checks pass |
 | 1 — Assess | Clone repo (or use current project), analyze deployability | Score too low → stop |
 | 2 — Detect | Find existing image (Docker Hub / GHCR / README) | Found → jump to Phase 5 |
 | 3 — Dockerfile | Generate Dockerfile if missing | Already has one → skip |

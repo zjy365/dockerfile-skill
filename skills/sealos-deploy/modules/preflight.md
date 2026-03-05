@@ -119,20 +119,7 @@ Record key findings in `PROJECT.readme_summary` for use in Phase 1 (assess) and 
 
 This avoids re-reading README in every phase. The AI already has it in context.
 
-## Step 3: Docker Hub Login
-
-```bash
-docker info 2>/dev/null | grep "Username:"
-```
-
-If not logged in:
-1. Ask user for Docker Hub username
-2. Run: `docker login -u <username>`
-3. Record `DOCKER_HUB_USER` for Phase 4
-
-If user doesn't have a Docker Hub account → guide to https://hub.docker.com/signup
-
-## Step 4: Sealos Cloud Auth (OAuth2 Device Grant Flow)
+## Step 3: Sealos Cloud Auth (OAuth2 Device Grant Flow)
 
 Uses RFC 8628 Device Authorization Grant — no token copy-paste needed.
 
@@ -242,8 +229,9 @@ Environment:
   ○ Python <version>          (or: ✗ Python — template validation via AI)
 
 Auth:
-  ✓ Docker Hub (<username>)
   ✓ Sealos Cloud (<region>)
 ```
 
-Record `ENV`, `PROJECT`, and `DOCKER_HUB_USER` for subsequent phases → proceed to `modules/pipeline.md`.
+Note: Docker Hub login is NOT checked here. It is only required if Phase 2 finds no existing image and we need to build & push (Phase 4).
+
+Record `ENV` and `PROJECT` for subsequent phases → proceed to `modules/pipeline.md`.

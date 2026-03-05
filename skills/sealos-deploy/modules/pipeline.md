@@ -154,6 +154,22 @@ __pycache__
 
 ## Phase 4: Build & Push
 
+### 4.0 Docker Hub Login (lazy — only checked here)
+
+Docker Hub login is deferred to this phase because it's only needed when building.
+If Phase 2 found an existing image, this phase is skipped entirely.
+
+```bash
+docker info 2>/dev/null | grep "Username:"
+```
+
+If not logged in:
+1. Ask user for Docker Hub username
+2. Guide user to run in their terminal: `docker login -u <username>`
+3. Record `DOCKER_HUB_USER`
+
+If user doesn't have a Docker Hub account → guide to https://hub.docker.com/signup
+
 ### 4.1 Build & Push
 
 Tag format: `<DOCKER_HUB_USER>/<repo-name>:YYYYMMDD` (e.g., `zhujingyang/kite:20260304`).
