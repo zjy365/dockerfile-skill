@@ -1,24 +1,24 @@
-# 模板说明
+# Template Guide
 
 ![FastGPT Page](docs/images/fastgpt.png)
 
-以 FastGPT 为例，代码如何创建模板。本示例假设您已经对 Kubernetes 资源文件有一定的了解，并且仅解释一些模板特有的参数。模板文件主要分为两个部分。
+Using FastGPT as an example, this guide explains how to create a template with code. This example assumes you already have some understanding of Kubernetes resource files and only explains parameters specific to templates. The template file is mainly divided into two parts.
 
 ![structure](docs/images/structure-black.png#gh-dark-mode-only)![structure](docs/images/structure-white.png#gh-light-mode-only)
 
-## 第一部分: `Metadata CR`
+## Part 1: `Metadata CR`
 
 ```yaml
 apiVersion: app.sealos.io/v1
 kind: Template
-metadata: 
+metadata:
   name: fastgpt
 spec:
-  title: 'FastGpt'                         
-  url: 'https://fastgpt.run/'                         
-  gitRepo: 'https://github.com/labring/FastGPT'        
-  author: 'sealos'                                     
-  description: 'Fast GPT allows you to use your own openai API KEY to quickly call the openai interface, currently integrating Gpt35, Gpt4 and embedding. You can build your own knowledge base.'    
+  title: 'FastGpt'
+  url: 'https://fastgpt.run/'
+  gitRepo: 'https://github.com/labring/FastGPT'
+  author: 'sealos'
+  description: 'Fast GPT allows you to use your own openai API KEY to quickly call the openai interface, currently integrating Gpt35, Gpt4 and embedding. You can build your own knowledge base.'
   readme: 'https://raw.githubusercontent.com/labring-actions/templates/kb-0.9/template/fastgpt/README.md'
   icon: 'https://avatars.githubusercontent.com/u/50446880?s=96&v=4'
   templateType: inline
@@ -50,55 +50,55 @@ spec:
         - mysql
 ```
 
-如代码所示，元数据 CR 是常规的 Kubernetes 自定义资源类型，下表列出了需要填写的字段。
+As shown in the code, the Metadata CR is a standard Kubernetes custom resource type. The table below lists the fields that need to be filled in.
 
-| 代码            | 描述                                                         |
+| Field            | Description                                                         |
 | :---------------| :----------------------------------------------------------- |
-| `templateType` | `inline` 表示这是一个内联模板，所有 yaml 文件都集成在一个文件中。 |
-| `defaults`      | 定义要填充到资源文件中的默认值，例如应用程序名称（app_name）、域名（app_host）等。 |
-| `inputs`        | 定义部署应用程序时用户需要的一些参数，例如电子邮件、API-KEY 等。如果没有，则可以省略此项 |
+| `templateType` | `inline` indicates this is an inline template where all yaml files are integrated into a single file. |
+| `defaults`      | Defines default values to be populated into the resource files, such as the application name (app_name), domain (app_host), etc. |
+| `inputs`        | Defines some parameters that users need when deploying the application, such as email, API-KEY, etc. If there are none, this can be omitted. |
 
-### 解释：`变量`
+### Explanation: `Variables`
 
-任何被 `${{ }}` 包围的字符都是变量，变量分为以下几种类型：
+Any characters surrounded by `${{ }}` are variables. Variables are divided into the following types:
 
-1. `SEALOS_` 全大写字母的预定义系统内置变量，例如 `${{ SEALOS_NAMESPACE }}`，是 Sealos 本身提供的变量。有关所有当前支持的系统变量，请参阅[系统变量](#内置系统变量和函数)。
-2. `functions()` 函数，例如 `${{ random(8) }}`，是 Sealos 本身提供的函数。有关所有当前支持的函数，请参阅[函数](#内置系统变量和函数)。
-3. `defaults` 是填充随机值时解析的名称和值列表。
-4. `inputs` 是在部署应用程序时由用户填写的，输入将呈现为前端表单。
+1. `SEALOS_` all-uppercase predefined system built-in variables, such as `${{ SEALOS_NAMESPACE }}`, are variables provided by Sealos itself. For all currently supported system variables, see [System Variables](#built-in-system-variables-and-functions).
+2. `functions()` functions, such as `${{ random(8) }}`, are functions provided by Sealos itself. For all currently supported functions, see [Functions](#built-in-system-variables-and-functions).
+3. `defaults` is a list of names and values that are resolved when populating random values.
+4. `inputs` are filled in by the user when deploying the application, and the inputs will be rendered as a frontend form.
 
-### 解释：`Defaults`
+### Explanation: `Defaults`
 
-`spec.defaults` 是在解析模板时填充为默认值的名称、类型和值的映射。
+`spec.defaults` is a mapping of names, types, and values that are populated as default values when the template is parsed.
 
-| 名称    | 描述 |
+| Name    | Description |
 | :-------| :---------- |
-| `type`  | `string` 或 `number` 表示变量的类型，唯一的区别是在渲染时字符串类型将被引用，而数字类型不会。 |
-| `value` | 变量的值，如果值是函数，则将被渲染。 |
+| `type`  | `string` or `number` indicates the type of the variable. The only difference is that string types will be quoted during rendering, while number types will not. |
+| `value` | The value of the variable. If the value is a function, it will be rendered. |
 
-**在目前的版本实现中, `defaults` 必须要有一个 `app_name` 的字段,且其中需要包含 `${{ random(8) }}` 的随机数来作为应用的唯一名字,否则会报错.**
+**In the current version implementation, `defaults` must have an `app_name` field, and it must contain a `${{ random(8) }}` random number as the unique name for the application, otherwise an error will occur.**
 
-### 解释：`Inputs`
+### Explanation: `Inputs`
 
-`spec.defaults` 是一个定义的对象映射，被解析并显示为用户反应的表单输入。
+`spec.defaults` is a defined object mapping that is parsed and displayed as form inputs for user interaction.
 
-| 名称    | 描述 |
+| Name    | Description |
 | :-------| :---------- |
-| `description` | 输入的描述。将呈现为输入占位符。 |
-| `default`     | 输入的默认值。 |
-| `required`    | 输入是否必需。 |
-| `type`        | 必须是 `string` \| `number` \| `choice` \| `boolean` 中的一个 |
-| `options`?    | 当类型为 `choice` 时，设置可用选项列表。 |
-| `if`?         | JavaScript 表达式，控制是否启用此选项。 |
+| `description` | The description of the input. It will be rendered as the input placeholder. |
+| `default`     | The default value of the input. |
+| `required`    | Whether the input is required. |
+| `type`        | Must be one of `string` \| `number` \| `choice` \| `boolean` |
+| `options`?    | When the type is `choice`, sets the list of available options. |
+| `if`?         | A JavaScript expression that controls whether this option is enabled. |
 
-如上所示的输入将在前端呈现为表单输入：
+The inputs shown above will be rendered as form inputs on the frontend:
 
 <table>
 <tr>
-<td> 模板 </td> <td> 视图 </td>
+<td> Template </td> <td> View </td>
 </tr>
 <tr>
-<td width="50%"> 
+<td width="50%">
 
 ```yaml
 inputs:
@@ -114,62 +114,62 @@ inputs:
     required: true
 ```
 
-</td> 
-<td> 
+</td>
+<td>
 
-![render inputs](docs/images/render-inputs_zh.png) 
+![render inputs](docs/images/render-inputs_zh.png)
 
 </td>
 </tr>
 </table>
 
-#### `Inputs` 中 `if` 参数的用法
+#### Usage of the `if` Parameter in `Inputs`
 
-- 表单支持动态渲染，通过 `if` 参数控制表单项是否开启。
-- 参数的内容是表达式，不要使用 `${{ }}` 包裹。
-- 表达式的结果为 `true` 时，渲染该参数；结果为 `false` 时，不渲染该参数，且对应的 `required` 参数也不会生效。
-- 如果结果不是布尔值时，会被强制转换为布尔值。
+- The form supports dynamic rendering, controlling whether a form item is enabled through the `if` parameter.
+- The content of the parameter is an expression; do not wrap it with `${{ }}`.
+- When the expression result is `true`, the parameter is rendered; when the result is `false`, the parameter is not rendered, and the corresponding `required` parameter will not take effect either.
+- If the result is not a boolean value, it will be coerced to a boolean value.
 
-### 内置系统变量和函数
+### Built-in System Variables and Functions
 
-Sealos 模板引擎使用 `${{ expression }}` 的语法来解析表达式。
+The Sealos template engine uses the `${{ expression }}` syntax to parse expressions.
 
-- `expression` 是一个有效的 JavaScript 表达式。
-- 表达式中可以访问 Sealos 内置变量和函数。
+- `expression` is a valid JavaScript expression.
+- Built-in Sealos variables and functions can be accessed within the expression.
 
-Sealos 提供了一些内置的系统变量和函数，方便用户在模板中使用。
+Sealos provides some built-in system variables and functions for convenient use in templates.
 
-#### 内置系统变量
+#### Built-in System Variables
 
-- `${{ SEALOS_NAMESPACE }}` Sealos 用户部署的命名空间。
-- `${{ SEALOS_CLOUD_DOMAIN }}` Sealos 集群的域名后缀。
-- `${{ SEALOS_CERT_SECRET_NAME }}` Sealos 用于存储 TLS 证书的 secret 名称。
-- `${{ SEALOS_SERVICE_ACCOUNT }}` Sealos 用户的 SA。
+- `${{ SEALOS_NAMESPACE }}` The namespace where the Sealos user deploys.
+- `${{ SEALOS_CLOUD_DOMAIN }}` The domain suffix of the Sealos cluster.
+- `${{ SEALOS_CERT_SECRET_NAME }}` The secret name used by Sealos to store TLS certificates.
+- `${{ SEALOS_SERVICE_ACCOUNT }}` The SA of the Sealos user.
 
-#### 内置系统函数
+#### Built-in System Functions
 
-- `${{ random(length) }}` 生成长度为 `length` 的随机字符串。
-- `${{ base64(expression) }}` 将表达式结果编码成 base64 格式。
-  - `${{ base64('hello world') }}` 会返回 `aGVsbG8gd29ybGQ=`。
-  - 也可以引用变量 `${{ base64(inputs.secret) }}`。
+- `${{ random(length) }}` Generates a random string of the specified `length`.
+- `${{ base64(expression) }}` Encodes the expression result into base64 format.
+  - `${{ base64('hello world') }}` will return `aGVsbG8gd29ybGQ=`.
+  - You can also reference variables `${{ base64(inputs.secret) }}`.
 
-> 注意
+> Note
 >
-> 不能通过 `${{ inputs.enabled }}` 来判断是否启用某个选项，因为 `enabled` 是一个字符串，不是布尔值。
+> You cannot use `${{ inputs.enabled }}` to determine whether an option is enabled, because `enabled` is a string, not a boolean value.
 >
-> 需要使用 `${{ inputs.enabled === 'true' }}` 来判断是否启用某个选项。
+> You need to use `${{ inputs.enabled === 'true' }}` to determine whether an option is enabled.
 
-#### 条件渲染
+#### Conditional Rendering
 
-Sealos 模板引擎支持使用 `${{ if(expression) }}`、`${{ elif(expression) }}`、`${{ else() }}` 和 `${{ endif() }}` 进行条件渲染。
+The Sealos template engine supports conditional rendering using `${{ if(expression) }}`, `${{ elif(expression) }}`, `${{ else() }}`, and `${{ endif() }}`.
 
-- 条件渲染是一种特殊的内置系统函数
-- 条件语句必须单独占一行，不能与其他内容在同一行。
-- 条件表达式必须返回布尔值 (`true` 或 `false`)，否则会被强制转换为布尔值。
-- 允许跨 yaml 列表渲染。
-- `Template CR` 不支持条件渲染。
+- Conditional rendering is a special type of built-in system function.
+- Conditional statements must occupy a line by themselves and cannot be on the same line as other content.
+- Conditional expressions must return a boolean value (`true` or `false`); otherwise, they will be coerced to a boolean value.
+- Cross-YAML-list rendering is allowed.
+- `Template CR` does not support conditional rendering.
 
-**示例:**
+**Example:**
 
 ```yaml
 ${{ if(inputs.enableIngress === 'true') }}
@@ -179,11 +179,11 @@ kind: Ingress
 ${{ endif() }}
 ```
 
-这段代码表示，只有当 `inputs.enableIngress` 为 `true` 时，才会渲染 Ingress 资源。
+This code means that the Ingress resource will only be rendered when `inputs.enableIngress` is `true`.
 
 <details>
 
-<summary>一个相对完整的例子</summary>
+<summary>A relatively complete example</summary>
 
 ```yaml
 apiVersion: app.sealos.io/v1
@@ -195,7 +195,7 @@ spec:
   url: 'https://github.com/Yidadaa/ChatGPT-Next-Web'
   gitRepo: 'https://github.com/Yidadaa/ChatGPT-Next-Web'
   author: 'Sealos'
-  description: '一键免费部署你的跨平台私人 ChatGPT 应用'
+  description: 'One-click free deployment of your cross-platform private ChatGPT application'
   readme: 'https://raw.githubusercontent.com/labring-actions/templates/kb-0.9/template/chatgpt-next-web/README.md'
   icon: 'https://raw.githubusercontent.com/Yidadaa/ChatGPT-Next-Web/main/docs/images/icon.svg'
   templateType: inline
@@ -210,33 +210,33 @@ spec:
       value: chatgpt-next-web-${{ random(8) }}
   inputs:
     DOMAIN:
-      description: "自定义域名，需要cname到: ${{ defaults.app_host + '.' + SEALOS_CLOUD_DOMAIN }}"
+      description: "Custom domain, need to CNAME to: ${{ defaults.app_host + '.' + SEALOS_CLOUD_DOMAIN }}"
       type: string
       default: ''
       required: false
     OPENAI_API_KEY:
-      description: '这是你在 OpenAI 账户页面申请的 API 密钥，使用英文逗号隔开多个 key，这样可以随机轮询这些 key'
+      description: 'This is your API key obtained from the OpenAI account page. Separate multiple keys with commas to enable random rotation among these keys'
       type: string
       default: ''
       required: true
     HIDE_USER_API_KEY:
-      description: '如果你不想让用户自行填入 API Key，将勾选'
+      description: 'Check this if you do not want users to fill in their own API Key'
       type: boolean
       default: 'false'
       required: false
     AUZRE_ENABLE:
-      description: '启用 Azure'
+      description: 'Enable Azure'
       type: boolean
       default: 'false'
       required: false
     AZURE_API_KEY:
-      description: 'Azure 密钥'
+      description: 'Azure Key'
       type: string
       default: ''
       required: true
       if: inputs.AUZRE_ENABLE === 'true'
     AZURE_URL:
-      description: 'Azure 部署地址'
+      description: 'Azure Deployment URL'
       type: string
       default: 'https://{azure-resource-url}/openai/deployments/{deploy-name}'
       required: true
@@ -375,23 +375,23 @@ ${{ endif() }}
 
 </details>
 
-## 第二部分：`应用程序资源文件`
+## Part 2: `Application Resource Files`
 
-此部分通常由一组资源类型组成：
+This part typically consists of a set of resource types:
 
-- 应用程序 `Deployment`、`StatefulSet`、`Service`
-- 外部访问 `Ingress`
-- 底层依赖 `Database`、`Object Storage`
+- Application `Deployment`, `StatefulSet`, `Service`
+- External Access `Ingress`
+- Underlying Dependencies `Database`, `Object Storage`
 
-每个资源可以重复任意次数，没有顺序。
+Each resource can be repeated any number of times, in no particular order.
 
-### 解释：`应用程序`
+### Explanation: `Application`
 
-应用程序是一个由多个 `Deployment`、`StatefulSet`、`Service` 或/和 `Job`、`Secret`、`ConfigMap`、`Custom Resource` 组成的列表。
+An application is a list composed of multiple `Deployment`, `StatefulSet`, `Service` and/or `Job`, `Secret`, `ConfigMap`, `Custom Resource`.
 
 <details>
 
-<summary>代码</summary>
+<summary>Code</summary>
 
 ```yaml
 apiVersion: apps/v1
@@ -453,7 +453,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: ${{ defaults.app_name }}-pg-conn-credential
-                  key: password    
+                  key: password
             - name: ONEAPI_URL
               value: ${{ defaults.app_name }}-key.${{ SEALOS_NAMESPACE }}.svc.cluster.local:3000/v1
             - name: ONEAPI_KEY
@@ -512,23 +512,23 @@ spec:
 
 </details>
 
-经常更改的是以下字段：
+The frequently changed fields are as follows:
 
-| 代码                         | 描述                                                         |
+| Field                         | Description                                                         |
 | :--------------------------- | :----------------------------------------------------------- |
-| `metadata.annotations`<br/>`metadata.labels` | 更改以匹配 Launchpad 的要求，例如 `originImageName`、`minReplicas`、`maxReplicas`。 |
-| `spec.containers[].image` | 更改为您的 Docker 镜像。 |
-| `spec.containers[].env` | 为容器配置环境变量。 |
-| `spec.containers[].ports.containerPort` | 更改为与您的 Docker 镜像对应的端口。 |
-| `${{ defaults.app_name }}` | 您可以使用 `${{ defaults.xxxx }}`\|`${{ inputs.xxxx }}` 变量来设置在 `Template CR` 中定义的参数。
+| `metadata.annotations`<br/>`metadata.labels` | Change to match Launchpad's requirements, such as `originImageName`, `minReplicas`, `maxReplicas`. |
+| `spec.containers[].image` | Change to your Docker image. |
+| `spec.containers[].env` | Configure environment variables for the container. |
+| `spec.containers[].ports.containerPort` | Change to the port corresponding to your Docker image. |
+| `${{ defaults.app_name }}` | You can use `${{ defaults.xxxx }}`\|`${{ inputs.xxxx }}` variables to set parameters defined in the `Template CR`.
 
-### 解释：`外部访问`
+### Explanation: `External Access`
 
-如果应用程序需要从外部访问，则需要添加以下代码：
+If the application needs to be accessed externally, you need to add the following code:
 
 <details>
 
-<summary>代码</summary>
+<summary>Code</summary>
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -575,11 +575,11 @@ spec:
 
 </details>
 
-请注意，出于安全目的，`host` 字段需要随机设置。您可以将 `${{ random(8) }}` 设置为 `defaults.app_host`，然后使用 `${{ defaults.app_host }}`。
+Please note that for security purposes, the `host` field needs to be set randomly. You can set `${{ random(8) }}` as `defaults.app_host`, and then use `${{ defaults.app_host }}`.
 
-### 解释：`NodePort 类型的 Service`
+### Explanation: `NodePort Type Service`
 
-如果应用程序需要通过 NodePort 类型的 Service 暴露服务，需要遵循以下命名规则：Service 名称应以 `-nodeport` 为后缀。例如：
+If the application needs to expose services through a NodePort type Service, the following naming convention must be followed: the Service name should have `-nodeport` as a suffix. For example:
 
 <details>
 
@@ -617,15 +617,15 @@ spec:
 
 </details>
 
-这种命名规则（`${{ defaults.app_name }}-nodeport`）对于 NodePort 类型的 Service 是必需的，以便系统能够正确识别和处理这种类型的资源。
+This naming convention (`${{ defaults.app_name }}-nodeport`) is required for NodePort type Services so that the system can correctly identify and handle this type of resource.
 
-### 解释：`底层依赖`
+### Explanation: `Underlying Dependencies`
 
-几乎所有应用程序都需要底层依赖，例如 `database`、`cache`、`object storage` 等。您可以添加以下代码来部署我们提供的一些底层依赖：
+Almost all applications require underlying dependencies, such as `database`, `cache`, `object storage`, etc. You can add the following code to deploy some of the underlying dependencies we provide:
 
-#### `数据库`
+#### `Database`
 
-我们使用 [`kubeblocks`](https://kubeblocks.io/) 提供数据库资源支持。您可以直接使用以下代码来部署数据库：
+We use [`kubeblocks`](https://kubeblocks.io/) to provide database resource support. You can directly use the following code to deploy databases:
 
 <details>
 
@@ -670,7 +670,7 @@ spec:
             resources:
               requests:
                 storage: 1Gi
-            storageClassName: openebs-backup  
+            storageClassName: openebs-backup
   terminationPolicy: Delete
 
 
@@ -1404,17 +1404,17 @@ subjects:
 
 </details>
 
-当部署数据库时，您只需要关注数据库使用的资源：
+When deploying a database, you only need to focus on the resources used by the database:
 
-| 代码        | 描述            |
+| Field        | Description            |
 | ----------- | --------------- |
-| `replicas`  | 实例数量        |
-| `resources` | 分配 CPU 和内存 |
-| `storage`   | 卷大小          |
+| `replicas`  | Number of instances        |
+| `resources` | Allocate CPU and memory |
+| `storage`   | Volume size          |
 
-#### 如何访问应用程序的数据库
+#### How to Access the Application's Database
 
-数据库的用户名/密码设置为一个 secret，以供将来使用。可以通过以下代码将其添加到环境变量中。添加后，您可以通过 $(MONGO_PASSWORD) 在容器中读取 MONGODB 密码。
+The database username/password is set as a secret for future use. It can be added to environment variables through the following code. Once added, you can read the MONGODB password in the container via $(MONGO_PASSWORD).
 
 ```yaml
 ...
@@ -1431,9 +1431,9 @@ spec:
 ...
 ```
 
-#### `对象存储`
+#### `Object Storage`
 
-我们使用对象存储提供存储桶资源支持。您可以直接使用以下代码来部署存储桶：
+We use object storage to provide bucket resource support. You can directly use the following code to deploy a bucket:
 
 ```yaml
 apiVersion: objectstorage.sealos.io/v1
@@ -1444,11 +1444,11 @@ spec:
   policy: private
 ```
 
-其中 policy 有三种类型，分别为 private（私有存储桶，不开放）、publicRead（共享存储桶，开放公共读功能）和 publicReadwrite（共享存储桶，开放公共读写功能）。
+The policy has three types: private (private bucket, not open), publicRead (shared bucket, open for public read), and publicReadwrite (shared bucket, open for public read and write).
 
-#### 如何访问应用程序的存储桶
+#### How to Access the Application's Bucket
 
-存储桶的访问密钥和访问地址存放在一个 secret 中。可以通过以下代码将其添加到环境变量中。
+The bucket access key and access address are stored in a secret. They can be added to environment variables through the following code.
 
 ```yaml
 ...
@@ -1485,31 +1485,31 @@ spec:
 ...
 ```
 
-### 说明: 系统底层处理逻辑
+### Note: System Underlying Processing Logic
 
-#### 模板的实例
+#### Template Instance
 
-为了方便用户管理和变更通过模板部署的应用,系统会在实际部署的时候部署一个`app.sealos.io/v1, Kind=Instance`的 CRD作为应用的实例.
+To facilitate user management and modification of applications deployed through templates, the system deploys an `app.sealos.io/v1, Kind=Instance` CRD as the application instance during actual deployment.
 
-CRD本身会完全按照 `app.sealos.io/v1, Kind=Template` 的模板格式与字段进行迁移,其中处理逻辑为:
+The CRD itself will be fully migrated according to the template format and fields of `app.sealos.io/v1, Kind=Template`, with the following processing logic:
 
-1. 把 template 当中的所有变量/函数全部替换为一个确定的值
-2. 将 kind 从`Template` 改为 `Instance`
-3. Apply 这个模板的实例到用户的 ns
+1. Replace all variables/functions in the template with definite values
+2. Change the kind from `Template` to `Instance`
+3. Apply this template instance to the user's namespace
 
-#### 资源的标签
+#### Resource Labels
 
-对于所有的通过模板市场部署的资源,包括系统资源比如 `deploy`, `service` 以及自定义资源比如 `app`, `kb数据库` 等,都会全部统一增加一个标签: `cloud.sealos.io/deploy-on-sealos: $app_name`.
+For all resources deployed through the template marketplace, including system resources such as `deploy`, `service` as well as custom resources such as `app`, `kb database`, etc., a unified label will be added to all of them: `cloud.sealos.io/deploy-on-sealos: $app_name`.
 
-其中 `app_name` 为用户部署的应用的名称, 默认是以一个随机数作为结尾,比如 `fastgpt-zu1n048s`.
+Where `app_name` is the name of the application deployed by the user, which by default ends with a random number, such as `fastgpt-zu1n048s`.
 
-## 第三部分：`渲染过程详解`
+## Part 3: `Rendering Process Details`
 
-Sealos 模板引擎在渲染过程中遵循特定的顺序，确保变量和条件语句能够被正确解析。
+The Sealos template engine follows a specific order during the rendering process to ensure that variables and conditional statements can be correctly parsed.
 
 <details>
 
-<summary>以下流程图详细展示了整个渲染过程</summary>
+<summary>The following flowchart details the entire rendering process</summary>
 
 ```mermaid
 graph TB
@@ -1528,21 +1528,21 @@ graph TB
     style L fill:#FF6347,stroke:#333,stroke-width:2px,color:#FFF
 
     subgraph sub1[ ]
-        A[1. 获取 Template CR 文件] --> B[解析 defaults]
-        B -- 仅允许使用内置系统变量和函数 --> C[解析 inputs]
-        C -- 允许使用内置系统变量、函数和 defaults --> D[Template CR 解析完毕]
+        A[1. Get Template CR file] --> B[Parse defaults]
+        B -- Only built-in system variables and functions allowed --> C[Parse inputs]
+        C -- Built-in system variables, functions, and defaults allowed --> D[Template CR parsing complete]
     end
     subgraph sub2[ ]
-        E[2. 解析应用程序资源文件] --> F[条件渲染]
-        F -- 根据表达式真假选择性渲染代码块 --> G[变量解析]
-        G -- 使用 defaults、inputs 和内置变量/函数替换占位符 --> H[应用程序资源文件解析完毕]
+        E[2. Parse application resource files] --> F[Conditional rendering]
+        F -- Selectively render code blocks based on expression truth values --> G[Variable resolution]
+        G -- Replace placeholders using defaults, inputs, and built-in variables/functions --> H[Application resource file parsing complete]
     end
     subgraph sub3[ ]
-        I[3. 渲染 Form 表单和 YAML 文件列表] --> J[Form 表单条件渲染]
-        J -- 根据表达式真假选择性渲染表单项 --> K[Form 变更触发重新渲染]
-        K -- 重新执行步骤 2 --> L[渲染完毕]
+        I[3. Render Form and YAML file list] --> J[Form conditional rendering]
+        J -- Selectively render form items based on expression truth values --> K[Form changes trigger re-rendering]
+        K -- Re-execute step 2 --> L[Rendering complete]
     end
-    
+
     sub1 --> sub2
     sub2 --> sub3
   end
@@ -1550,22 +1550,22 @@ graph TB
 
 </details>
 
-- 解析 Template CR
-  - 首先，系统读取 `Template CR` 文件
-  - 然后，解析 `spec.defaults` 字段，该字段定义了模板的默认值。
-    - 在 `defaults` 字段中，只允许使用预定义的[内置系统变量](#内置系统变量)和[内置系统函数](#内置系统函数)。
-  - 接着，解析 `spec.inputs` 字段，该字段定义了用户需要填写的参数。
-    - 在 `inputs` 字段中，除了可以使用内置系统变量和函数外，还可以引用 `defaults` 中定义的变量。
-- 解析应用程序资源文件
-  - 此阶段表达式中能引用 `内置系统变量` `内置系统函数` 以及 `defaults` `inputs`
-  - 首先，进行[条件渲染](#条件渲染)，根据条件表达式的真假，选择性地渲染代码块。
-  - 然后，进行[变量解析](#内置系统变量)，使用 `defaults`、`inputs` 和内置变量/函数替换资源文件中的占位符。
-- 渲染 Form 表单和 YAML 文件列表
-  - 最后，系统根据解析后的 `inputs` 字段渲染 Form 表单，用户可以在表单中填写自定义参数。
-    - 此阶段表达式中能引用 `内置系统变量` `内置系统函数` 以及 `defaults` `inputs`
-  - 当 `Form` 变更时会触发重新渲染 `YAML` 文件列表。
+- Parse Template CR
+  - First, the system reads the `Template CR` file.
+  - Then, it parses the `spec.defaults` field, which defines the default values for the template.
+    - In the `defaults` field, only predefined [built-in system variables](#built-in-system-variables) and [built-in system functions](#built-in-system-functions) are allowed.
+  - Next, it parses the `spec.inputs` field, which defines the parameters that users need to fill in.
+    - In the `inputs` field, in addition to built-in system variables and functions, variables defined in `defaults` can also be referenced.
+- Parse application resource files
+  - At this stage, expressions can reference `built-in system variables`, `built-in system functions`, as well as `defaults` and `inputs`.
+  - First, [conditional rendering](#conditional-rendering) is performed, selectively rendering code blocks based on the truth values of conditional expressions.
+  - Then, [variable resolution](#built-in-system-variables) is performed, replacing placeholders in resource files using `defaults`, `inputs`, and built-in variables/functions.
+- Render Form and YAML file list
+  - Finally, the system renders the Form based on the parsed `inputs` field, where users can fill in custom parameters.
+    - At this stage, expressions can reference `built-in system variables`, `built-in system functions`, as well as `defaults` and `inputs`.
+  - When the `Form` changes, it triggers re-rendering of the `YAML` file list.
 
-> 注意：
+> Note:
 >
-> 当用户在输入框中输入信息时，不会重新解析 `Template CR` 内容，
-> 也就原本的表达式不会重新运算，如 `value: ${{ random(8) }}`。
+> When users enter information in input fields, the `Template CR` content will not be re-parsed,
+> meaning the original expressions will not be re-evaluated, such as `value: ${{ random(8) }}`.

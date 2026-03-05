@@ -1,87 +1,87 @@
-# Sealos 模板开发规范
+# Sealos Template Development Specification
 
-## 模板文件组织规范
+## Template File Organization Specification
 
-### 目录结构要求
+### Directory Structure Requirements
 
-所有模板必须按照以下目录结构组织：
+All templates must be organized according to the following directory structure:
 
 ```
 templates/
 └── template/
-    └── <template-name>/    # 文件夹名称必须与模板的 name 字段一致
-        └── index.yaml       # 模板文件必须命名为 index.yaml
+    └── <template-name>/    # The folder name must match the template's name field
+        └── index.yaml       # The template file must be named index.yaml
 ```
 
-### 示例
+### Example
 
 ```
 templates/
 └── template/
     ├── formbricks/
-    │   └── index.yaml      # formbricks 模板文件
+    │   └── index.yaml      # formbricks template file
     ├── langflow/
-    │   └── index.yaml      # langflow 模板文件
+    │   └── index.yaml      # langflow template file
     └── fastgpt/
-        └── index.yaml      # fastgpt 模板文件
+        └── index.yaml      # fastgpt template file
 ```
 
-### 命名规则
+### Naming Rules
 
-1. 文件夹名称必须与模板 Template CR 中的 `metadata.name` 字段保持一致
-2. 模板文件必须命名为 `index.yaml`
-3. 文件夹名称应该使用小写字母和连字符，避免使用下划线或其他特殊字符
-4. **Template CR 的 `metadata.name` 必须硬编码为小写字母**，不能使用变量（如 `${{ defaults.app_name }}`）
+1. The folder name must be consistent with the `metadata.name` field in the Template CR
+2. The template file must be named `index.yaml`
+3. Folder names should use lowercase letters and hyphens; avoid underscores or other special characters
+4. **The `metadata.name` of the Template CR must be hardcoded in lowercase letters** and cannot use variables (such as `${{ defaults.app_name }}`)
 
-### 示例
+### Example
 
 ```yaml
-# 正确示例
+# Correct example
 apiVersion: app.sealos.io/v1
 kind: Template
 metadata:
-  name: typesense  # ✅ 硬编码的小写名称
+  name: typesense  # ✅ Hardcoded lowercase name
 spec:
   defaults:
     app_name:
       type: string
-      value: typesense-${{ random(8) }}  # ✅ 这里可以用变量
+      value: typesense-${{ random(8) }}  # ✅ Variables can be used here
 
-# 错误示例
+# Incorrect example
 metadata:
-  name: ${{ defaults.app_name }}  # ❌ 错误：不能使用变量
+  name: ${{ defaults.app_name }}  # ❌ Error: Variables cannot be used
 ```
 
-## 资源创建顺序规范
+## Resource Creation Order Specification
 
-模板内各个资源必须按照以下顺序创建：
+Resources within a template must be created in the following order:
 
 ### 1. Template CR
-首先创建 Template 元数据定义
+Create the Template metadata definition first
 
-### 2. 对象存储
+### 2. Object Storage
 ```yaml
 apiVersion: objectstorage.sealos.io/v1
 kind: ObjectStorageBucket
 ```
 
-### 3. 数据库资源
-数据库各资源按以下顺序创建：
+### 3. Database Resources
+Database resources must be created in the following order:
 1. **ServiceAccount**
 2. **Role**
 3. **RoleBinding**
-4. **Cluster** (实际的数据库实例)
-5. **Job** (如果需要初始化数据库)
+4. **Cluster** (the actual database instance)
+5. **Job** (if database initialization is needed)
 
-### 4. 应用资源
-应用各资源按以下顺序创建：
-1. **ConfigMap** (应用配置文件)
-2. **Deployment/StatefulSet** (主应用)
+### 4. Application Resources
+Application resources must be created in the following order:
+1. **ConfigMap** (application configuration files)
+2. **Deployment/StatefulSet** (main application)
 3. **Service**
 4. **Ingress**
 5. **App**
 
-### 示例结构
+### Example Structure
 ```
 Template CR
 ---
@@ -114,39 +114,39 @@ Application Ingress
 App
 ```
 
-## Defaults 和 Inputs 配置规范
+## Defaults and Inputs Configuration Specification
 
-### 基本原则
+### Basic Principles
 
-**重要区分：**
-- `defaults`：用于存放**自动生成**的值（如随机字符串、随机端口等）
-- `inputs`：用于存放**需要用户输入**的值（如邮箱、API Key、自定义配置等）
+**Important distinction:**
+- `defaults`: Used to store **automatically generated** values (such as random strings, random ports, etc.)
+- `inputs`: Used to store values that **require user input** (such as email, API Key, custom configurations, etc.)
 
-### Defaults 配置
+### Defaults Configuration
 
-`defaults` 中的值会在模板解析时自动生成，不需要用户交互：
+Values in `defaults` are automatically generated when the template is parsed and do not require user interaction:
 
 ```yaml
 defaults:
   app_host:
     type: string
-    value: typesense-${{ random(8) }}  # ✅ 带应用名称前缀
+    value: typesense-${{ random(8) }}  # ✅ With application name prefix
   app_name:
     type: string
-    value: typesense-${{ random(8) }}  # ✅ 应用名称
+    value: typesense-${{ random(8) }}  # ✅ Application name
   api_key:
     type: string
-    value: ${{ random(32) }}           # ✅ 随机生成的密钥
+    value: ${{ random(32) }}           # ✅ Randomly generated secret key
 ```
 
-**注意事项：**
-1. `app_host` 必须带应用名称前缀（如 `typesense-${{ random(8) }}`）
-2. `app_name` 必须包含 `${{ random(8) }}` 以确保唯一性
-3. 随机生成的配置（密钥、密码等）放在 `defaults` 中，不要放在 `inputs` 中
+**Notes:**
+1. `app_host` must include an application name prefix (e.g., `typesense-${{ random(8) }}`)
+2. `app_name` must include `${{ random(8) }}` to ensure uniqueness
+3. Randomly generated configurations (secret keys, passwords, etc.) should be placed in `defaults`, not in `inputs`
 
-### Inputs 配置
+### Inputs Configuration
 
-`inputs` 中的值需要用户在部署时填写：
+Values in `inputs` need to be filled in by the user at deployment time:
 
 ```yaml
 inputs:
@@ -162,29 +162,29 @@ inputs:
     required: false
 ```
 
-**何时使用 inputs：**
-- ✅ 用户的邮箱地址
-- ✅ 自定义域名
-- ✅ 外部服务的 API Key（需要用户提供）
-- ✅ 功能开关（启用/禁用某些特性）
-- ❌ 随机生成的密钥（应该放在 defaults）
-- ❌ 自动生成的配置（应该放在 defaults）
+**When to use inputs:**
+- ✅ User's email address
+- ✅ Custom domain name
+- ✅ API Key for external services (needs to be provided by the user)
+- ✅ Feature toggles (enable/disable certain features)
+- ❌ Randomly generated secret keys (should be placed in defaults)
+- ❌ Automatically generated configurations (should be placed in defaults)
 
-## 国际化（i18n）配置
+## Internationalization (i18n) Configuration
 
-### 基本格式
+### Basic Format
 
-模板需要添加 `locale` 和 `i18n` 配置来支持多语言：
+Templates need to add `locale` and `i18n` configuration to support multiple languages:
 
 ```yaml
 spec:
-  locale: en  # 默认语言
+  locale: en  # Default language
   i18n:
     zh:
       description: '中文描述'
 ```
 
-### 配置示例
+### Configuration Example
 
 ```yaml
 apiVersion: app.sealos.io/v1
@@ -200,74 +200,74 @@ spec:
       description: '一个用于演示的示例应用程序'
 ```
 
-### 支持的字段
+### Supported Fields
 
-i18n 配置支持以下字段的翻译：
-- `description` - 应用描述
+The i18n configuration supports translation of the following fields:
+- `description` - Application description
 
-### 注意事项
+### Notes
 
-1. `locale` 指定默认语言，通常设置为 `en`
-2. 目前只支持 `zh`（中文）翻译
-3. `i18n.zh.description` 应使用简体中文
-4. 技术性的字段名称和默认值不需要翻译
-5. 如果中文标题与 `spec.title` 一致，建议省略 `i18n.zh.title`
+1. `locale` specifies the default language, typically set to `en`
+2. Currently only `zh` (Chinese) translation is supported
+3. `i18n.zh.description` should use Simplified Chinese
+4. Technical field names and default values do not need translation
+5. If the Chinese title is the same as `spec.title`, it is recommended to omit `i18n.zh.title`
 
-## Categories 类别限制
+## Categories Restrictions
 
-在创建 Sealos 模板时，`categories` 字段不能自定义，必须从以下预定义的选项中选择：
+When creating Sealos templates, the `categories` field cannot be customized and must be selected from the following predefined options:
 
-- `tool` - 工具类应用
-- `ai` - AI/机器学习相关应用
-- `game` - 游戏类应用
-- `database` - 数据库类应用
-- `low-code` - 低代码平台
-- `monitor` - 监控类应用
-- `dev-ops` - DevOps 工具
-- `blog` - 博客/内容管理系统
-- `storage` - 存储类应用
-- `frontend` - 前端类应用
-- `backend` - 后端类应用
+- `tool` - Utility applications
+- `ai` - AI/Machine Learning related applications
+- `game` - Game applications
+- `database` - Database applications
+- `low-code` - Low-code platforms
+- `monitor` - Monitoring applications
+- `dev-ops` - DevOps tools
+- `blog` - Blog/Content management systems
+- `storage` - Storage applications
+- `frontend` - Frontend applications
+- `backend` - Backend applications
 
-### 示例
+### Example
 ```yaml
 categories:
-  - storage  # 正确：使用预定义的类别
-  - tool     # 正确：可以选择多个类别
-  # - media  # 错误：不在允许的列表中
+  - storage  # Correct: Using a predefined category
+  - tool     # Correct: Multiple categories can be selected
+  # - media  # Error: Not in the allowed list
 ```
 
-## 存储规范
+## Storage Specification
 
-### emptyDir 限制（重要！）
+### emptyDir Restriction (Important!)
 
-**⚠️ Sealos 不支持 emptyDir！** 所有需要临时存储的场景都必须转换为持久化存储。
+**Sealos does not support emptyDir!** All scenarios requiring temporary storage must be converted to persistent storage.
 
-**❌ 错误示例：**
+**Incorrect example:**
 ```yaml
 volumes:
   - name: config-storage
-    emptyDir: {}  # 错误！Sealos 不支持 emptyDir
+    emptyDir: {}  # Error! Sealos does not support emptyDir
 ```
 
-**✅ 正确做法：**
-- 对于 StatefulSet：使用 `volumeClaimTemplates` 创建持久化存储
-- 对于 Deployment：考虑是否真的需要存储，如果需要则改用 StatefulSet
-- 对于临时配置：考虑使用 ConfigMap 或 Secret
+**Correct approach:**
+- For StatefulSet: Use `volumeClaimTemplates` to create persistent storage
+- For Deployment: Consider whether storage is truly needed; if so, switch to StatefulSet
+- For temporary configuration: Consider using ConfigMap or Secret
 
-### PersistentVolumeClaim 使用限制
+### PersistentVolumeClaim Usage Restriction
 
-存储不能单独创建 PersistentVolumeClaim，必须在 Deployment 或者 StatefulSet 中使用 `volumeClaimTemplates` 字段。
+Storage cannot create PersistentVolumeClaim independently; it must use the `volumeClaimTemplates` field within a Deployment or StatefulSet.
 
-### volumeClaimTemplates 格式
+### volumeClaimTemplates Format
 
 ```yaml
 volumeClaimTemplates:
   - metadata:
       annotations:
-        path: /var/lib/headscale  # 挂载路径
-        value: '1'                 # 固定值
-      name: vn-varvn-libvn-headscale  # 名称规则见下方
+        path: /var/lib/headscale  # Mount path
+        value: '1'                 # Fixed value
+      name: vn-varvn-libvn-headscale  # Naming rules see below
     spec:
       accessModes:
         - ReadWriteOnce
@@ -276,46 +276,46 @@ volumeClaimTemplates:
           storage: 1Gi
 ```
 
-### 命名规则
+### Naming Rules
 
-`metadata.name` 将复用 `metadata.annotations.path` 的值，并将特殊字符替换为 "vn-"：
-- `/` 替换为 `vn-`
-- `-` 替换为 `vn-`
-- 其他特殊字符也替换为 `vn-`
+`metadata.name` reuses the value of `metadata.annotations.path`, with special characters replaced by "vn-":
+- `/` is replaced with `vn-`
+- `-` is replaced with `vn-`
+- Other special characters are also replaced with `vn-`
 
-例如：
+For example:
 - `/var/lib/headscale` → `vn-varvn-libvn-headscale`
 - `/usr/src/app/upload` → `vn-usrvn-srcvn-appvn-upload`
 - `/cache` → `vn-cache`
 
-## ConfigMap 配置规范
+## ConfigMap Configuration Specification
 
-### 命名规则
+### Naming Rules
 
-ConfigMap 的名称必须和挂载该 ConfigMap 的应用的 `metadata.name` 值一样
+The name of the ConfigMap must be the same as the `metadata.name` value of the application that mounts the ConfigMap.
 
-### 文件存储规则（极其重要！！！）
+### File Storage Rules (Extremely Important!!!)
 
-**⚠️ 重要提醒：ConfigMap 的 data 字段中的所有键名（key）必须严格遵循 vn- 转换规则！**
+**Important reminder: All key names in the ConfigMap's data field must strictly follow the vn- conversion rules!**
 
-所有配置文件都应该放到同一个 ConfigMap 中，ConfigMap 中的 `data.<文件名>` 键名**必须**将挂载路径中的特殊字符替换为 "vn-"：
+All configuration files should be placed in the same ConfigMap. The key names in `data.<filename>` **must** have special characters in the mount path replaced with "vn-":
 
-**转换规则：**
-- 将路径中的 `/` 替换为 `vn-`
-- 将路径中的 `-` 替换为 `vn-`
-- 将路径中的 `.` 替换为 `vn-`
-- 其他特殊字符也替换为 `vn-`
+**Conversion rules:**
+- Replace `/` in the path with `vn-`
+- Replace `-` in the path with `vn-`
+- Replace `.` in the path with `vn-`
+- Other special characters are also replaced with `vn-`
 
-**❌ 错误示例（绝对不要这样写）：**
+**Incorrect example (never do this):**
 ```yaml
 data:
-  inifile: |  # 错误！没有使用 vn- 转换
+  inifile: |  # Error! Not using vn- conversion
     content here
-  chart.ini: | # 错误！包含点号
+  chart.ini: | # Error! Contains a dot
     content here
 ```
 
-**✅ 正确示例：**
+**Correct example:**
 ```yaml
 apiVersion: v1
 kind: ConfigMap
@@ -325,23 +325,23 @@ metadata:
     app: ${{ defaults.app_name }}
     cloud.sealos.io/app-deploy-manager: ${{ defaults.app_name }}
 data:
-  # 原路径: /etc/nginx/conf.d/default.conf
-  # 转换后: vn-etcvn-nginxvn-confvn-dvn-defaultvn-conf
+  # Original path: /etc/nginx/conf.d/default.conf
+  # After conversion: vn-etcvn-nginxvn-confvn-dvn-defaultvn-conf
   vn-etcvn-nginxvn-confvn-dvn-defaultvn-conf: |
     server {
       listen 80;
       ...
     }
-  # 原路径: /tmp/chart.ini
-  # 转换后: vn-tmpvn-chartvn-ini
+  # Original path: /tmp/chart.ini
+  # After conversion: vn-tmpvn-chartvn-ini
   vn-tmpvn-chartvn-ini: |
     [cluster]
     seedlist = example
 ```
 
-### Volume 挂载规范
+### Volume Mount Specification
 
-#### Volumes 格式
+#### Volumes Format
 
 ```yaml
 volumes:
@@ -354,7 +354,7 @@ volumes:
       defaultMode: 420
 ```
 
-#### VolumeMount 格式
+#### VolumeMount Format
 
 ```yaml
 volumeMounts:
@@ -363,7 +363,7 @@ volumeMounts:
     subPath: ./etc/nginx/conf.d/default.conf
 ```
 
-### 完整示例
+### Complete Example
 
 ```yaml
 # ConfigMap
@@ -429,87 +429,87 @@ spec:
             defaultMode: 420
 ```
 
-## 标签和命名规范
+## Labels and Naming Specification
 
-### app-deploy-manager 标签规则
+### app-deploy-manager Label Rules
 
-1. 应用工作负载（Deployment/StatefulSet/DaemonSet）必须包含 `metadata.labels.app`，且值必须和资源的 `metadata.name` 保持一致
-2. `cloud.sealos.io/app-deploy-manager` 的值必须和资源的 `metadata.name` 的值保持一致
-3. 每个模板的主应用（提供公网端口的前端应用）的 `metadata.name` 必须是 `${{ defaults.app_name }}`
-4. 其他组件的命名应该基于 `${{ defaults.app_name }}` 加上组件标识，例如：
-   - `${{ defaults.app_name }}-server` 
+1. Application workloads (Deployment/StatefulSet/DaemonSet) must include `metadata.labels.app`, and the value must be consistent with the resource's `metadata.name`
+2. The value of `cloud.sealos.io/app-deploy-manager` must be consistent with the resource's `metadata.name` value
+3. The `metadata.name` of each template's main application (the frontend application providing the public-facing port) must be `${{ defaults.app_name }}`
+4. Other components should be named based on `${{ defaults.app_name }}` plus a component identifier, for example:
+   - `${{ defaults.app_name }}-server`
    - `${{ defaults.app_name }}-ml`
    - `${{ defaults.app_name }}-redis`
-5. 应用 Service 必须包含 `metadata.labels.app` 和 `metadata.labels.cloud.sealos.io/app-deploy-manager`，且 `metadata.name`、两个标签以及 `spec.selector.app` 必须完全一致
-6. 组件级 ConfigMap 必须包含 `metadata.labels.app` 和 `metadata.labels.cloud.sealos.io/app-deploy-manager`，且二者都必须与 `metadata.name` 保持一致
-7. 应用 Ingress 的 `metadata.name` 必须与 `metadata.labels.cloud.sealos.io/app-deploy-manager` 以及 backend `service.name` 保持一致
+5. Application Service must include `metadata.labels.app` and `metadata.labels.cloud.sealos.io/app-deploy-manager`, and `metadata.name`, both labels, and `spec.selector.app` must be exactly the same
+6. Component-level ConfigMap must include `metadata.labels.app` and `metadata.labels.cloud.sealos.io/app-deploy-manager`, and both must be consistent with `metadata.name`
+7. Application Ingress's `metadata.name` must be consistent with `metadata.labels.cloud.sealos.io/app-deploy-manager` and the backend `service.name`
 
-### 容器命名规则
+### Container Naming Rules
 
-`containers.name` 的名称必须和 `metadata.name` 的值保持一致。
+The `containers.name` must be consistent with the `metadata.name` value.
 
 ```yaml
-# 正确示例
+# Correct example
 metadata:
   name: ${{ defaults.app_name }}
 spec:
   template:
     spec:
       containers:
-        - name: ${{ defaults.app_name }}  # 必须与 metadata.name 一致
+        - name: ${{ defaults.app_name }}  # Must be consistent with metadata.name
 
-# 子组件的正确示例
+# Correct example for sub-components
 metadata:
   name: ${{ defaults.app_name }}-ml
 spec:
   template:
     spec:
       containers:
-        - name: ${{ defaults.app_name }}-ml  # 必须与 metadata.name 一致
+        - name: ${{ defaults.app_name }}-ml  # Must be consistent with metadata.name
 ```
 
-### 示例
+### Example
 
 ```yaml
-# 主应用（正确）
+# Main application (correct)
 metadata:
   name: ${{ defaults.app_name }}
   labels:
     app: ${{ defaults.app_name }}
     cloud.sealos.io/app-deploy-manager: ${{ defaults.app_name }}
 
-# 子组件（正确）
+# Sub-component (correct)
 metadata:
   name: ${{ defaults.app_name }}-ml
   labels:
     app: ${{ defaults.app_name }}-ml
     cloud.sealos.io/app-deploy-manager: ${{ defaults.app_name }}-ml
 
-# 错误示例
+# Incorrect example
 metadata:
   name: ${{ defaults.app_name }}-server
   labels:
     app: ${{ defaults.app_name }}
-    cloud.sealos.io/app-deploy-manager: ${{ defaults.app_name }}  # 错误：标签值与name不一致
+    cloud.sealos.io/app-deploy-manager: ${{ defaults.app_name }}  # Error: Label value does not match name
 ```
 
-### 特殊情况：数据库资源
+### Special Case: Database Resources
 
-数据库资源（通过 kubeblocks 创建的 Cluster）使用特殊的标签 `sealos-db-provider-cr` 而不是 `cloud.sealos.io/app-deploy-manager`：
+Database resources (Clusters created via kubeblocks) use the special label `sealos-db-provider-cr` instead of `cloud.sealos.io/app-deploy-manager`:
 
 ```yaml
-# 数据库资源的正确标签
+# Correct labels for database resources
 metadata:
   name: ${{ defaults.app_name }}-redis
   labels:
     sealos-db-provider-cr: ${{ defaults.app_name }}-redis
 ```
 
-## 对象存储配置
+## Object Storage Configuration
 
-### 环境变量设置
+### Environment Variable Settings
 
-对象存储的环境变量配置必须遵循以下格式：
+Object storage environment variable configuration must follow this format:
 
 ```yaml
 env:
@@ -541,18 +541,18 @@ env:
     value: "1"
 ```
 
-### 注意事项
+### Notes
 
-1. `object-storage-key` 是固定的 secret 名称（不包含应用名称）
-2. 只有 bucket 的 secret 名称包含应用名称：`object-storage-key-${{ SEALOS_SERVICE_ACCOUNT }}-${{ defaults.app_name }}`
-3. S3_ENDPOINT 和 S3_PUBLIC_DOMAIN 使用环境变量引用：`$(BACKEND_STORAGE_MINIO_EXTERNAL_ENDPOINT)`
-4. S3_ENABLE_PATH_STYLE 必须设置为 "1"
+1. `object-storage-key` is a fixed secret name (does not include the application name)
+2. Only the bucket's secret name includes the application name: `object-storage-key-${{ SEALOS_SERVICE_ACCOUNT }}-${{ defaults.app_name }}`
+3. S3_ENDPOINT and S3_PUBLIC_DOMAIN use environment variable references: `$(BACKEND_STORAGE_MINIO_EXTERNAL_ENDPOINT)`
+4. S3_ENABLE_PATH_STYLE must be set to "1"
 
-## Ingress 配置规范
+## Ingress Configuration Specification
 
-### 标准格式
+### Standard Format
 
-Ingress 必须使用以下格式：
+Ingress must use the following format:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -591,39 +591,39 @@ spec:
               service:
                 name: ${{ defaults.app_name }}
                 port:
-                  number: <端口号>
+                  number: <port-number>
   tls:
     - hosts:
         - ${{ defaults.app_host }}.${{ SEALOS_CLOUD_DOMAIN }}
       secretName: ${{ SEALOS_CERT_SECRET_NAME }}
 ```
 
-### 注意事项
+### Notes
 
-1. `metadata.name` 必须是 `${{ defaults.app_name }}`
-2. 必须包含 `cloud.sealos.io/app-deploy-manager-domain` 标签
-3. `ssl-redirect` 默认为 `'true'`
-4. 包含静态资源缓存的 configuration-snippet
-5. backend service name 必须是 `${{ defaults.app_name }}`
+1. `metadata.name` must be `${{ defaults.app_name }}`
+2. Must include the `cloud.sealos.io/app-deploy-manager-domain` label
+3. `ssl-redirect` defaults to `'true'`
+4. Includes a configuration-snippet for static resource caching
+5. Backend service name must be `${{ defaults.app_name }}`
 
-## 数据库连接配置
+## Database Connection Configuration
 
-### PostgreSQL 环境变量
+### PostgreSQL Environment Variables
 
-PostgreSQL 的所有环境变量都从 kubeblocks 自动创建的 secret 中获取。Secret 名称格式为：`${{ defaults.app_name }}-pg-conn-credential`
+All PostgreSQL environment variables are obtained from the secret automatically created by kubeblocks. The secret name format is: `${{ defaults.app_name }}-pg-conn-credential`
 
-Secret 包含以下 keys：
-- `endpoint`: 完整的连接端点（host:port）
-- `host`: 主机名
-- `password`: 密码
-- `port`: 端口号
-- `username`: 用户名（通常是 postgres）
+The secret contains the following keys:
+- `endpoint`: Full connection endpoint (host:port)
+- `host`: Hostname
+- `password`: Password
+- `port`: Port number
+- `username`: Username (usually postgres)
 
-### 使用示例
+### Usage Example
 
 ```yaml
 env:
-  # 使用 host 和 port 分别配置
+  # Configure host and port separately
   - name: DB_HOSTNAME
     valueFrom:
       secretKeyRef:
@@ -644,8 +644,8 @@ env:
       secretKeyRef:
         name: ${{ defaults.app_name }}-pg-conn-credential
         key: password
-  
-  # 或者使用 endpoint 直接获取 host:port
+
+  # Or use endpoint to directly get host:port
   - name: DB_ENDPOINT
     valueFrom:
       secretKeyRef:
@@ -653,21 +653,21 @@ env:
         key: endpoint
 ```
 
-### 其他数据库
+### Other Databases
 
-其他数据库（Redis、MySQL、MongoDB）也遵循类似的模式：
+Other databases (Redis, MySQL, MongoDB) follow a similar pattern:
 - Redis: `${{ defaults.app_name }}-redis-account-default`
 - MySQL: `${{ defaults.app_name }}-mysql-conn-credential`
 - MongoDB: `${{ defaults.app_name }}-mongodb-account-root`
 
-### PostgreSQL 数据库初始化
+### PostgreSQL Database Initialization
 
-PostgreSQL 默认不会创建数据库，如果应用需要自定义数据库（而不是使用默认的 postgres 数据库），必须通过 Job 来创建。
+PostgreSQL does not create a database by default. If the application needs a custom database (rather than using the default postgres database), it must be created via a Job.
 
-**重要规范：**
-- 数据库名称应该使用应用的默认值，不应该作为用户输入参数
-- 数据库名称应该与应用名称相关，通常使用应用的简称或标识符
-- 例如：langflow 应用使用 'langflow' 数据库，fastgpt 应用使用 'fastgpt' 数据库
+**Important specification:**
+- The database name should use the application's default value and should not be a user input parameter
+- The database name should be related to the application name, typically using the application's short name or identifier
+- For example: the langflow application uses the 'langflow' database, the fastgpt application uses the 'fastgpt' database
 
 ```yaml
 apiVersion: batch/v1
@@ -714,24 +714,24 @@ spec:
   ttlSecondsAfterFinished: 300
 ```
 
-**注意事项：**
-1. Job 名称使用 `${{ defaults.app_name }}-pg-init` 格式
-2. 使用 `postgres:16-alpine` 镜像以保持轻量
-3. `ttlSecondsAfterFinished: 300` 确保 Job 完成后 5 分钟自动清理
-4. 初始化脚本必须先等待 PostgreSQL 就绪（例如 `pg_isready`）
-5. 初始化脚本必须幂等（先检查 `pg_database`，不存在才创建）
-6. 数据库名称应该硬编码在模板中，使用应用的默认数据库名称（如上例中的 'langflow'）
+**Notes:**
+1. Job name uses the format `${{ defaults.app_name }}-pg-init`
+2. Uses the `postgres:16-alpine` image to keep it lightweight
+3. `ttlSecondsAfterFinished: 300` ensures the Job is automatically cleaned up 5 minutes after completion
+4. The initialization script must wait for PostgreSQL to be ready first (e.g., `pg_isready`)
+5. The initialization script must be idempotent (check `pg_database` first, create only if it does not exist)
+6. The database name should be hardcoded in the template, using the application's default database name (e.g., 'langflow' in the example above)
 
-## 应用配置规范
+## Application Configuration Specification
 
-### 服务间通信规则
+### Inter-Service Communication Rules
 
-**重要**：服务之间相互引用必须使用全域名（FQDN），不能直接使用服务名。
+**Important**: Services must reference each other using Fully Qualified Domain Names (FQDN); direct service names cannot be used.
 
-全域名格式：`<service-name>.${{ SEALOS_NAMESPACE }}.svc.cluster.local`
+FQDN format: `<service-name>.${{ SEALOS_NAMESPACE }}.svc.cluster.local`
 
 ```yaml
-# 正确示例：使用全域名
+# Correct example: Using FQDN
 env:
   - name: WORKER_URL
     value: http://${{ defaults.app_name }}-worker.${{ SEALOS_NAMESPACE }}.svc.cluster.local:4003
@@ -740,20 +740,20 @@ env:
   - name: REDIS_URL
     value: redis://:$(REDIS_PASSWORD)@${{ defaults.app_name }}-redis-redis.${{ SEALOS_NAMESPACE }}.svc:6379
 
-# 错误示例：直接使用服务名
+# Incorrect example: Using service name directly
 # - name: WORKER_URL
-#   value: http://worker-service:4003  # 错误：可能无法解析
+#   value: http://worker-service:4003  # Error: May fail to resolve
 ```
 
-注意：虽然 `.svc.cluster.local` 后缀在某些情况下可以省略（如上面 REDIS_URL 的例子），但为了保证跨命名空间的兼容性和明确性，建议始终包含完整的域名。
+Note: Although the `.svc.cluster.local` suffix can be omitted in some cases (as in the REDIS_URL example above), it is recommended to always include the full domain name to ensure cross-namespace compatibility and clarity.
 
-### 环境变量依赖顺序规则
+### Environment Variable Dependency Order Rules
 
-**重要**：如果一个环境变量引用了另一个环境变量，被引用的变量必须定义在引用它的变量之前。
+**Important**: If an environment variable references another environment variable, the referenced variable must be defined before the variable that references it.
 
 ```yaml
 env:
-  # 正确示例：REDIS_PASSWORD 在前，REDIS_URL 在后
+  # Correct example: REDIS_PASSWORD comes first, REDIS_URL comes after
   - name: REDIS_PASSWORD
     valueFrom:
       secretKeyRef:
@@ -761,50 +761,50 @@ env:
         key: password
   - name: REDIS_URL
     value: redis://:$(REDIS_PASSWORD)@${{ defaults.app_name }}-redis.${{ SEALOS_NAMESPACE }}.svc:6379
-  
-  # 错误示例：如果 REDIS_URL 在 REDIS_PASSWORD 之前定义
+
+  # Incorrect example: If REDIS_URL is defined before REDIS_PASSWORD
   # - name: REDIS_URL
-  #   value: redis://:$(REDIS_PASSWORD)@...  # 错误：REDIS_PASSWORD 未定义
+  #   value: redis://:$(REDIS_PASSWORD)@...  # Error: REDIS_PASSWORD is not defined yet
   # - name: REDIS_PASSWORD
   #   valueFrom: ...
 ```
 
-这是因为 Kubernetes 按照环境变量在 YAML 中的顺序进行解析，如果引用的变量还未定义，会导致引用失败。
+This is because Kubernetes parses environment variables in the order they appear in the YAML. If a referenced variable has not been defined yet, the reference will fail.
 
-### 必需的安全和资源管理配置
+### Required Security and Resource Management Configuration
 
-所有应用的 Deployment 或 StatefulSet 必须包含以下配置：
+All application Deployments or StatefulSets must include the following configurations:
 
-1. **automountServiceAccountToken**: 必须设置为 `false`，避免不必要的权限暴露
-2. **revisionHistoryLimit**: 必须设置为 `1`，减少历史版本占用的资源
-3. **metadata.annotations**: 必须包含以下注解：
-   - `originImageName`: 原始镜像名称
-   - `deploy.cloud.sealos.io/minReplicas`: 最小副本数，通常设置为 `'1'`
-   - `deploy.cloud.sealos.io/maxReplicas`: 最大副本数，通常设置为 `'1'`
+1. **automountServiceAccountToken**: Must be set to `false` to avoid unnecessary permission exposure
+2. **revisionHistoryLimit**: Must be set to `1` to reduce resources consumed by historical revisions
+3. **metadata.annotations**: Must include the following annotations:
+   - `originImageName`: Original image name
+   - `deploy.cloud.sealos.io/minReplicas`: Minimum replica count, typically set to `'1'`
+   - `deploy.cloud.sealos.io/maxReplicas`: Maximum replica count, typically set to `'1'`
 
 ```yaml
 apiVersion: apps/v1
-kind: Deployment  # 或 StatefulSet
+kind: Deployment  # or StatefulSet
 metadata:
   name: ${{ defaults.app_name }}
   labels:
     app: ${{ defaults.app_name }}
     cloud.sealos.io/app-deploy-manager: ${{ defaults.app_name }}
   annotations:
-    originImageName: example/app:1.0.0  # 必须：原始镜像名称
-    deploy.cloud.sealos.io/minReplicas: '1'  # 必须：最小副本数
-    deploy.cloud.sealos.io/maxReplicas: '1'  # 必须：最大副本数
+    originImageName: example/app:1.0.0  # Required: Original image name
+    deploy.cloud.sealos.io/minReplicas: '1'  # Required: Minimum replica count
+    deploy.cloud.sealos.io/maxReplicas: '1'  # Required: Maximum replica count
 spec:
-  revisionHistoryLimit: 1  # 必须设置为 1
+  revisionHistoryLimit: 1  # Must be set to 1
   template:
     spec:
-      automountServiceAccountToken: false  # 必须设置为 false
+      automountServiceAccountToken: false  # Must be set to false
       containers:
         - name: ${{ defaults.app_name }}
-          # 其他容器配置...
+          # Other container configuration...
 ```
 
-### 完整示例
+### Complete Example
 
 ```yaml
 apiVersion: apps/v1
@@ -819,7 +819,7 @@ metadata:
     app: ${{ defaults.app_name }}
     cloud.sealos.io/app-deploy-manager: ${{ defaults.app_name }}
 spec:
-  revisionHistoryLimit: 1  # 保留历史版本数量限制为 1
+  revisionHistoryLimit: 1  # Revision history limit set to 1
   replicas: 1
   selector:
     matchLabels:
@@ -829,20 +829,20 @@ spec:
       labels:
         app: ${{ defaults.app_name }}
     spec:
-      automountServiceAccountToken: false  # 禁用服务账户令牌自动挂载
+      automountServiceAccountToken: false  # Disable automatic service account token mounting
       containers:
         - name: ${{ defaults.app_name }}
           image: example/app:1.0.0
           imagePullPolicy: IfNotPresent
 ```
 
-## 资源配额规范
+## Resource Quota Specification
 
-### 资源限制配置
+### Resource Limit Configuration
 
-**⚠️ 重要：所有容器的 resources 字段必须包含 requests 和 limits！**
+**Important: The resources field of all containers must include both requests and limits!**
 
-所有应用的 Deployment 或 StatefulSet 中的容器必须配置资源配额：
+All containers in application Deployments or StatefulSets must have resource quotas configured:
 
 ```yaml
 containers:
@@ -851,16 +851,16 @@ containers:
     imagePullPolicy: IfNotPresent
     resources:
       requests:
-        cpu: 100m      # 最小 CPU 请求（必须）
-        memory: 128Mi  # 最小内存请求（必须）
+        cpu: 100m      # Minimum CPU request (required)
+        memory: 128Mi  # Minimum memory request (required)
       limits:
-        cpu: 500m      # CPU 上限（必须）
-        memory: 512Mi  # 内存上限（必须）
+        cpu: 500m      # CPU upper limit (required)
+        memory: 512Mi  # Memory upper limit (required)
 ```
 
-**配额设置原则**：
+**Quota setting guidelines**:
 
-1. **轻量级前端应用**（静态文件服务、简单 Web 应用）：
+1. **Lightweight frontend applications** (static file serving, simple web applications):
    ```yaml
    resources:
      requests:
@@ -871,7 +871,7 @@ containers:
        memory: 256Mi
    ```
 
-2. **标准后端应用**（API 服务、中等负载应用）：
+2. **Standard backend applications** (API services, medium-load applications):
    ```yaml
    resources:
      requests:
@@ -882,7 +882,7 @@ containers:
        memory: 1Gi
    ```
 
-3. **重负载应用**（AI 处理、视频处理、大数据处理）：
+3. **Heavy-load applications** (AI processing, video processing, big data processing):
    ```yaml
    resources:
      requests:
@@ -893,7 +893,7 @@ containers:
        memory: 2Gi
    ```
 
-4. **AI/机器学习应用**（需要 GPU 或大量计算资源）：
+4. **AI/Machine Learning applications** (requiring GPU or large computational resources):
    ```yaml
    resources:
      requests:
@@ -904,48 +904,48 @@ containers:
        memory: 4Gi
    ```
 
-**配额设置说明**：
+**Quota setting explanation**:
 
-- **requests（请求值）**：容器保证能获得的最小资源
-  - CPU 使用 `m` 单位（1000m = 1 CPU 核心）
-  - 内存使用 `Mi` 或 `Gi` 单位
-  - 建议：requests 设置为实际使用量的 70-80%
+- **requests (request values)**: The minimum resources guaranteed for the container
+  - CPU uses `m` units (1000m = 1 CPU core)
+  - Memory uses `Mi` or `Gi` units
+  - Recommendation: Set requests to 70-80% of actual usage
 
-- **limits（限制值）**：容器能使用的最大资源
-  - CPU 可突发使用到 limit 值
-  - 内存超过 limit 会被 OOM Kill
-  - 建议：limits 设置为 requests 的 2-4 倍
+- **limits (limit values)**: The maximum resources the container can use
+  - CPU can burst up to the limit value
+  - Memory exceeding the limit will trigger OOM Kill
+  - Recommendation: Set limits to 2-4 times the requests
 
-**配额设置的黄金法则**：
+**Golden rules for quota settings**:
 
-1. **总是同时设置 requests 和 limits**
-   - ❌ 只设置 requests：可能导致资源饥饿
-   - ❌ 只设置 limits：可能导致调度失败
-   - ✅ 两者都设置：保证性能和稳定性
+1. **Always set both requests and limits**
+   - Incorrect: Setting only requests may lead to resource starvation
+   - Incorrect: Setting only limits may cause scheduling failures
+   - Correct: Setting both guarantees performance and stability
 
-2. **合理的 requests/limits 比例**
-   - CPU: limits 可以是 requests 的 2-10 倍（CPU 可压缩）
-   - 内存: limits 建议是 requests 的 1.5-2 倍（内存不可压缩）
+2. **Reasonable requests/limits ratio**
+   - CPU: limits can be 2-10 times the requests (CPU is compressible)
+   - Memory: limits should be 1.5-2 times the requests (memory is incompressible)
 
-3. **根据应用类型调整**
-   - 计算密集型：提高 CPU 配额
-   - 内存密集型：提高内存配额
-   - I/O 密集型：平衡 CPU 和内存
+3. **Adjust based on application type**
+   - Compute-intensive: Increase CPU quota
+   - Memory-intensive: Increase memory quota
+   - I/O-intensive: Balance CPU and memory
 
-4. **监控和调整**
-   - 初次部署使用保守配额
-   - 监控实际资源使用情况
-   - 根据监控数据动态调整
+4. **Monitor and adjust**
+   - Use conservative quotas for initial deployment
+   - Monitor actual resource usage
+   - Dynamically adjust based on monitoring data
 
-**示例对比**：
+**Comparison examples**:
 
 ```yaml
-# ❌ 错误：没有资源限制
+# Incorrect: No resource limits
 containers:
   - name: app
     image: app:1.0.0
 
-# ❌ 错误：只有 requests
+# Incorrect: Only requests
 containers:
   - name: app
     image: app:1.0.0
@@ -954,7 +954,7 @@ containers:
         cpu: 100m
         memory: 128Mi
 
-# ❌ 错误：只有 limits
+# Incorrect: Only limits
 containers:
   - name: app
     image: app:1.0.0
@@ -963,7 +963,7 @@ containers:
         cpu: 500m
         memory: 512Mi
 
-# ✅ 正确：requests 和 limits 都有
+# Correct: Both requests and limits are present
 containers:
   - name: app
     image: app:1.0.0
@@ -976,11 +976,11 @@ containers:
         memory: 512Mi
 ```
 
-## 镜像配置规范
+## Image Configuration Specification
 
-### 镜像拉取策略
+### Image Pull Policy
 
-所有容器的镜像拉取策略必须设置为 `IfNotPresent`：
+The image pull policy for all containers must be set to `IfNotPresent`:
 
 ```yaml
 spec:
@@ -989,14 +989,14 @@ spec:
       containers:
         - name: ${{ defaults.app_name }}
           image: example/app:1.0.0
-          imagePullPolicy: IfNotPresent  # 必须使用 IfNotPresent
+          imagePullPolicy: IfNotPresent  # Must use IfNotPresent
 ```
 
-这样可以：
-- 减少不必要的镜像拉取，提高部署速度
-- 降低对镜像仓库的压力
-- 节省网络带宽
+This helps to:
+- Reduce unnecessary image pulls and improve deployment speed
+- Reduce pressure on the image registry
+- Save network bandwidth
 
-## 其他注意事项
+## Other Notes
 
-（待补充更多规范和最佳实践）
+(More specifications and best practices to be added)

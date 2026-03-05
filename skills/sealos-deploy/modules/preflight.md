@@ -53,7 +53,73 @@ ENV.jq        = true/false
 **Python:**
 - If missing, Sealos template validation (Phase 5) uses AI self-check instead of `quality_gate.py`
 
-## Step 2: Docker Hub Login
+## Step 2: Project Context
+
+Determine what we're deploying and gather project information.
+
+### 2.1 Resolve Working Directory
+
+**A) User provided a GitHub URL:**
+```bash
+WORK_DIR=$(mktemp -d)
+git clone --depth 1 "<github-url>" "$WORK_DIR"
+GITHUB_URL="<github-url>"
+```
+
+**B) User provided a local path:**
+```bash
+WORK_DIR="<local-path>"
+```
+
+**C) No input — deploy current project (most common):**
+```bash
+WORK_DIR="$(pwd)"
+```
+
+### 2.2 Git Repo Detection
+
+```bash
+# Is it a git repo?
+git -C "$WORK_DIR" rev-parse --is-inside-work-tree 2>/dev/null
+
+# Git metadata
+git -C "$WORK_DIR" remote get-url origin 2>/dev/null      # → GITHUB_URL (if github.com)
+git -C "$WORK_DIR" branch --show-current 2>/dev/null       # → BRANCH
+git -C "$WORK_DIR" log --oneline -1 2>/dev/null            # → latest commit
+```
+
+Record:
+```
+PROJECT.work_dir    = resolved path
+PROJECT.is_git      = true/false
+PROJECT.github_url  = "https://github.com/owner/repo" or empty
+PROJECT.repo_name   = basename of directory or parsed from URL
+PROJECT.branch      = current branch
+```
+
+If `PROJECT.github_url` exists, parse `owner` and `repo` for Phase 2 image detection.
+
+### 2.3 Read README
+
+README is the single most important file for understanding a project. Read it now.
+
+```bash
+# Find README (case-insensitive)
+ls "$WORK_DIR"/README* "$WORK_DIR"/readme* 2>/dev/null | head -1
+```
+
+Read the README content and extract:
+- **Project description** — what does this project do?
+- **Tech stack** — language, framework, database
+- **Run/build instructions** — how to build, what port it listens on
+- **Docker references** — `docker run`, `docker pull`, image names (ghcr.io/..., dockerhub/...)
+- **Environment variables** — any `.env` examples or config descriptions
+
+Record key findings in `PROJECT.readme_summary` for use in Phase 1 (assess) and Phase 2 (detect).
+
+This avoids re-reading README in every phase. The AI already has it in context.
+
+## Step 3: Docker Hub Login
 
 ```bash
 docker info 2>/dev/null | grep "Username:"
@@ -66,7 +132,7 @@ If not logged in:
 
 If user doesn't have a Docker Hub account → guide to https://hub.docker.com/signup
 
-## Step 3: Sealos Cloud Auth (OAuth2 Device Grant Flow)
+## Step 4: Sealos Cloud Auth (OAuth2 Device Grant Flow)
 
 Uses RFC 8628 Device Authorization Grant — no token copy-paste needed.
 
@@ -164,6 +230,11 @@ curl -sf -X POST "$REGION/api/auth/kubeconfig" \
 Report to user:
 
 ```
+Project:
+  ✓ <PROJECT.repo_name> (<PROJECT.work_dir>)
+  ✓ git: <BRANCH> ← <GITHUB_URL or "local only">
+  ✓ README: <one-line summary of what the project does>
+
 Environment:
   ✓ Docker <version>
   ✓ git <version>
@@ -175,4 +246,4 @@ Auth:
   ✓ Sealos Cloud (<region>)
 ```
 
-Record `ENV` and `DOCKER_HUB_USER` for subsequent phases → proceed to `modules/pipeline.md`.
+Record `ENV`, `PROJECT`, and `DOCKER_HUB_USER` for subsequent phases → proceed to `modules/pipeline.md`.

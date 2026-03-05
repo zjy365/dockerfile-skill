@@ -95,11 +95,21 @@ async function requestDeviceAuthorization (region) {
  * - 400: { error: "expired_token" }         → device code expired
  */
 async function pollForToken (region, deviceCode, interval, expiresIn) {
-  const deadline = Date.now() + expiresIn * 1000
+  // Hard cap at 10 minutes regardless of server's expires_in
+  const maxWait = Math.min(expiresIn, 600) * 1000
+  const deadline = Date.now() + maxWait
   let pollInterval = interval * 1000
+  let lastLoggedMinute = -1
 
   while (Date.now() < deadline) {
     await sleep(pollInterval)
+
+    // Log remaining time every minute
+    const remaining = Math.ceil((deadline - Date.now()) / 60000)
+    if (remaining !== lastLoggedMinute && remaining > 0) {
+      lastLoggedMinute = remaining
+      process.stderr.write(`  Waiting for authorization... (${remaining} min remaining)\n`)
+    }
 
     const res = await fetch(`${region}/api/auth/oauth2/token`, {
       method: 'POST',
@@ -139,7 +149,7 @@ async function pollForToken (region, deviceCode, interval, expiresIn) {
     }
   }
 
-  throw new Error('Device code expired (timeout). Please run login again.')
+  throw new Error('Authorization timed out (10 minutes). Please run login again.')
 }
 
 /**

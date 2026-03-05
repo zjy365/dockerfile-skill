@@ -7,7 +7,8 @@
  * Checks Docker Hub, GHCR, and README references.
  *
  * Usage:
- *   node detect-image.mjs <github-url> [work-dir]
+ *   node detect-image.mjs <github-url> [work-dir]     # Remote repo
+ *   node detect-image.mjs <work-dir>                   # Local project (auto-detect GitHub URL from git remote)
  *
  * Output (JSON):
  *   { "found": true, "image": "ghcr.io/zxh326/kite", "tag": "v0.4.0", "source": "ghcr-readme", "platforms": ["linux/amd64"] }
@@ -16,6 +17,7 @@
 
 import fs from 'fs'
 import path from 'path'
+import { execSync } from 'child_process'
 
 // ── GitHub URL Parser ──────────────────────────────────────
 
@@ -218,14 +220,54 @@ async function detectExistingImage (githubUrl, workDir) {
   return { found: false }
 }
 
+// ── Git Remote Helper ─────────────────────────────────────
+
+function getGithubUrlFromGitRemote (dir) {
+  try {
+    const remote = execSync('git remote get-url origin', { cwd: dir, encoding: 'utf-8' }).trim()
+    if (remote.includes('github.com')) return remote
+  } catch {}
+  return null
+}
+
 // ── CLI ────────────────────────────────────────────────────
 
-const [, , githubUrl, workDir] = process.argv
+const [, , arg1, arg2] = process.argv
 
-if (!githubUrl) {
+if (!arg1) {
   console.error('Usage: node detect-image.mjs <github-url> [work-dir]')
+  console.error('       node detect-image.mjs <work-dir>')
   process.exit(1)
 }
 
-const result = await detectExistingImage(githubUrl, workDir || '.')
-console.log(JSON.stringify(result, null, 2))
+// Determine if arg1 is a URL or a local path
+let githubUrl, workDir
+if (/^https?:\/\//.test(arg1) || arg1.startsWith('git@')) {
+  githubUrl = arg1
+  workDir = arg2 || '.'
+} else {
+  // arg1 is a local path, try to get GitHub URL from git remote
+  workDir = arg1
+  githubUrl = getGithubUrlFromGitRemote(workDir)
+}
+
+if (githubUrl) {
+  const result = await detectExistingImage(githubUrl, workDir)
+  console.log(JSON.stringify(result, null, 2))
+} else {
+  // No GitHub URL available — only do README scan
+  const readmeImages = extractImagesFromReadme(workDir)
+  for (const img of readmeImages) {
+    let result
+    if (img.registry === 'ghcr') {
+      result = await checkGhcr(img.owner, img.repo)
+    } else {
+      result = await checkDockerHub(img.owner, img.repo)
+    }
+    if (result) {
+      console.log(JSON.stringify({ found: true, ...result, source: `${result.source}-readme` }, null, 2))
+      process.exit(0)
+    }
+  }
+  console.log(JSON.stringify({ found: false }))
+}

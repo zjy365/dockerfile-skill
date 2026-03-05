@@ -1,4 +1,4 @@
-# Sealos Deploy
+# Sealos Deploy v1.0
 
 One command to deploy any GitHub project to Sealos Cloud.
 
@@ -13,7 +13,8 @@ curl -fsSL https://raw.githubusercontent.com/zjy365/sealos-deploy/main/install.s
 ## Use
 
 ```
-/sealos-deploy https://github.com/labring-sigs/kite
+/sealos-deploy                                       # deploy current project
+/sealos-deploy https://github.com/labring-sigs/kite  # deploy remote repo
 ```
 
 That's it. The skill handles everything:
@@ -83,10 +84,14 @@ sealos-deploy/
 
 ## Requirements
 
+**Required:**
 - Docker (for building images)
-- Node.js 18+ (for auth script)
 - A Docker Hub account
 - A Sealos Cloud account
+
+**Optional (faster, but AI handles the same work if missing):**
+- Node.js 18+
+- Python 3.8+
 
 ## License
 

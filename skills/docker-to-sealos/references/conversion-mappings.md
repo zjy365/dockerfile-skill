@@ -1,39 +1,39 @@
-# Docker 到 Sealos 转换映射指南
+# Docker to Sealos Conversion Mapping Guide
 
-本文档提供 Docker Compose 配置到 Sealos 模板的详细映射规则。
+This document provides detailed mapping rules from Docker Compose configuration to Sealos templates.
 
-## 双源输入归并（Compose + 官方 Kubernetes）
+## Dual-Source Input Merging (Compose + Official Kubernetes)
 
-当应用同时提供 Docker Compose 与官方 Kubernetes 安装方案时，转换必须采用双源归并而非单源推断。
+When an application provides both a Docker Compose file and an official Kubernetes installation method, the conversion must use dual-source merging rather than single-source inference.
 
-### 归并原则
+### Merging Principles
 
-1. Sealos 规范与 SKILL MUST 规则优先（安全/平台约束不可破坏）
-2. 官方 Kubernetes 安装方案优先于 Compose 的应用运行语义
-3. Compose 作为服务拓扑与依赖的基线
-4. 通用默认值仅在上述来源缺失时使用
+1. Sealos specifications and SKILL MUST rules take priority (security/platform constraints must not be violated)
+2. The official Kubernetes installation method takes priority over Compose for application runtime semantics
+3. Compose serves as the baseline for service topology and dependencies
+4. Generic default values are only used when the above sources are absent
 
-### 重点对齐字段
+### Key Alignment Fields
 
-- 首次初始化与管理员引导字段（bootstrap admin/org/user/password）
-- 外部访问相关字段（domain/port/secure/tls termination assumption）
-- 协议与网关行为（Ingress backend protocol、service appProtocol、path routing）
-- 健康检查与启动顺序（liveness/readiness/startup probe）
-- 官方推荐的启动参数与命令
+- First-time initialization and admin bootstrap fields (bootstrap admin/org/user/password)
+- External access related fields (domain/port/secure/tls termination assumption)
+- Protocol and gateway behavior (Ingress backend protocol, service appProtocol, path routing)
+- Health checks and startup ordering (liveness/readiness/startup probe)
+- Officially recommended startup parameters and commands
 
-### 冲突处理
+### Conflict Resolution
 
-当官方 Kubernetes 方案与 Compose 冲突时：
+When the official Kubernetes method conflicts with Compose:
 
-- 保留 Sealos MUST 与安全规则
-- 其余应用行为默认对齐官方 Kubernetes 方案
-- 在输出中记录关键决策（仅记录存在歧义的项）
+- Preserve Sealos MUST and security rules
+- For all other application behavior, default to aligning with the official Kubernetes method
+- Record key decisions in the output (only record items with ambiguity)
 
-## 核心概念映射
+## Core Concept Mapping
 
 ### Docker Compose Service → Sealos Resources
 
-Docker Compose 中的一个 service 需要转换为多个 Sealos 资源：
+A single service in Docker Compose needs to be converted into multiple Sealos resources:
 
 ```yaml
 # Docker Compose
@@ -48,7 +48,7 @@ services:
       - DB_HOST=postgres
 ```
 
-转换为：
+Converts to:
 
 ```yaml
 # Sealos Template
@@ -70,24 +70,24 @@ metadata:
     cloud.sealos.io/app-deploy-manager: ${{ defaults.app_name }}
 
 ---
-# Ingress (如果需要公网访问)
+# Ingress (if public access is required)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: ${{ defaults.app_name }}
 ```
 
-## 镜像映射
+## Image Mapping
 
-⚠️ 示例镜像必须使用固定版本，优先精确版本 tag（如 `v2.2.0`）；仅在无法确定稳定版本 tag 时使用 digest。禁止使用 `:latest`。
-⚠️ 禁止在最终模板中保留 Compose 变量镜像表达式（如 `${IMAGE}`, `${IMAGE:-ghcr.io/example/app}`），必须在转换阶段解析为具体镜像引用。
+Warning: Example images must use a pinned version, preferring an exact version tag (e.g., `v2.2.0`); only use a digest when a stable version tag cannot be determined. Using `:latest` is prohibited.
+Warning: Compose variable image expressions (e.g., `${IMAGE}`, `${IMAGE:-ghcr.io/example/app}`) must not be retained in the final template; they must be resolved to concrete image references during the conversion phase.
 
 ### Docker Compose
 ```yaml
 services:
   app:
     image: nginx:1.27.2
-    # 或
+    # or
     build: ./app
 ```
 
@@ -97,7 +97,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    originImageName: nginx:1.27.2  # 必须添加
+    originImageName: nginx:1.27.2  # Must be added
 spec:
   revisionHistoryLimit: 1
   template:
@@ -106,10 +106,10 @@ spec:
       containers:
         - name: ${{ defaults.app_name }}
           image: nginx:1.27.2
-          imagePullPolicy: IfNotPresent  # 必须设置
+          imagePullPolicy: IfNotPresent  # Must be set
 ```
 
-## 端口映射
+## Port Mapping
 
 ### Docker Compose
 ```yaml
@@ -120,11 +120,11 @@ services:
       - "8080:80"
 ```
 
-> Sealos 网关默认在 Ingress 层终止 TLS。若 Compose 同时暴露 `80` 与 `443`，且业务服务不是“必须后端 HTTPS”，转换时应优先保留 HTTP 端口并移除 `443`，同时不再挂载容器内证书目录（例如 `/etc/nginx/ssl`、`/etc/ssl`、`/certs`）。
+> The Sealos gateway terminates TLS at the Ingress layer by default. If Compose exposes both `80` and `443`, and the backend service does not require HTTPS, the conversion should preferentially keep the HTTP port and remove `443`, while also not mounting in-container certificate directories (e.g., `/etc/nginx/ssl`, `/etc/ssl`, `/certs`).
 
 ### Sealos Template
 
-#### 容器端口配置
+#### Container Port Configuration
 ```yaml
 spec:
   revisionHistoryLimit: 1
@@ -138,7 +138,7 @@ spec:
             - containerPort: 80
 ```
 
-#### Service 配置
+#### Service Configuration
 ```yaml
 apiVersion: v1
 kind: Service
@@ -159,7 +159,7 @@ spec:
     app: ${{ defaults.app_name }}
 ```
 
-#### Ingress 配置（公网访问）
+#### Ingress Configuration (Public Access)
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -203,7 +203,7 @@ spec:
       secretName: ${{ SEALOS_CERT_SECRET_NAME }}
 ```
 
-#### TLS Offload 归一化（80/443 双端口场景）
+#### TLS Offload Normalization (80/443 Dual-Port Scenario)
 
 ```yaml
 # Docker Compose
@@ -215,13 +215,13 @@ services:
     volumes:
       - certs:/etc/nginx/ssl
 
-# 转换后（Sealos）
-# - workload/service 仅保留 80
-# - Ingress 继续使用平台证书
-# - /etc/nginx/ssl 不再转换为 PVC 挂载
+# After conversion (Sealos)
+# - workload/service only retains port 80
+# - Ingress continues to use the platform certificate
+# - /etc/nginx/ssl is no longer converted to a PVC mount
 ```
 
-## 环境变量映射
+## Environment Variable Mapping
 
 ### Docker Compose
 ```yaml
@@ -235,7 +235,7 @@ services:
 
 ### Sealos Template
 
-#### 普通环境变量
+#### Plain Environment Variables
 ```yaml
 spec:
   revisionHistoryLimit: 1
@@ -249,7 +249,7 @@ spec:
               value: production
 ```
 
-#### 业务容器敏感值（非数据库连接字段）
+#### Sensitive Values in Business Containers (Non-Database Connection Fields)
 ```yaml
 # Deployment
 spec:
@@ -262,12 +262,12 @@ spec:
               value: ${{ defaults.api_key }}
 ```
 
-说明：
-- 非数据库连接字段的敏感值使用 `env[].value`（来自 `defaults` 或 `inputs`）。
-- 数据库连接字段（`endpoint`/`host`/`port`/`username`/`password`）必须使用 `secretKeyRef`。
-- 仅允许使用 Kubeblocks 数据库 Secret 与对象存储 Secret。
+Notes:
+- Sensitive values for non-database connection fields use `env[].value` (from `defaults` or `inputs`).
+- Database connection fields (`endpoint`/`host`/`port`/`username`/`password`) must use `secretKeyRef`.
+- Only Kubeblocks database Secrets and object storage Secrets are allowed.
 
-#### 引用数据库连接
+#### Referencing Database Connections
 ```yaml
 env:
   - name: DB_ENDPOINT
@@ -297,7 +297,7 @@ env:
         key: password
 ```
 
-#### URL/DSN 变量组合（当 `endpoint` 仅为 `host:port` 时）
+#### URL/DSN Variable Composition (When `endpoint` Is Only `host:port`)
 ```yaml
 env:
   - name: SEALOS_DATABASE_POSTGRES_HOST
@@ -324,16 +324,16 @@ env:
     value: postgres://$(SEALOS_DATABASE_POSTGRES_USERNAME):$(SEALOS_DATABASE_POSTGRES_PASSWORD)@$(SEALOS_DATABASE_POSTGRES_HOST):$(SEALOS_DATABASE_POSTGRES_PORT)/postgres
 ```
 
-说明：
-- 仅在源值为 URL/DSN 且指向已识别数据库服务时使用此模式。
-- `DATABASE_URL` 等 URL 字段允许通过 `$(VAR)` 引用由 approved DB `secretKeyRef` 注入的组件变量。
-- 不允许引用非密钥来源变量拼装数据库 URL。
+Notes:
+- This pattern should only be used when the source value is a URL/DSN pointing to a recognized database service.
+- URL fields such as `DATABASE_URL` are allowed to reference component variables injected by approved DB `secretKeyRef` via `$(VAR)`.
+- Assembling database URLs by referencing non-secret source variables is not allowed.
 
-## 卷映射
+## Volume Mapping
 
 ### Docker Compose Volumes → Sealos VolumeClaimTemplates
 
-⚠️ **重要**：Sealos 不支持 emptyDir，所有存储必须是持久化的。
+**Important**: Sealos does not support emptyDir; all storage must be persistent.
 
 #### Docker Compose
 ```yaml
@@ -344,7 +344,7 @@ services:
       - ./config:/app/config
 ```
 
-#### Sealos Template (使用 StatefulSet)
+#### Sealos Template (Using StatefulSet)
 ```yaml
 apiVersion: apps/v1
 kind: StatefulSet
@@ -437,7 +437,7 @@ spec:
             defaultMode: 420
 ```
 
-## 数据库服务映射
+## Database Service Mapping
 
 ### Docker Compose
 ```yaml
@@ -452,7 +452,7 @@ services:
 
 ### Sealos Template
 
-使用完整的 Kubeblocks Cluster 配置（参考 `database-templates.md`）：
+Use the full Kubeblocks Cluster configuration (refer to `database-templates.md`):
 
 ```yaml
 apiVersion: apps.kubeblocks.io/v1alpha1
@@ -466,10 +466,10 @@ metadata:
 spec:
   clusterDefinitionRef: postgresql
   clusterVersionRef: postgresql-16.4.0
-  # ... 完整配置见 database-templates.md
+  # ... full configuration see database-templates.md
 ```
 
-## 服务依赖映射
+## Service Dependency Mapping
 
 ### Docker Compose
 ```yaml
@@ -485,7 +485,7 @@ services:
 
 ### Sealos Template
 
-#### 服务间通信使用 FQDN
+#### Inter-Service Communication Using FQDN
 ```yaml
 env:
   - name: DB_HOST
@@ -494,7 +494,7 @@ env:
     value: ${{ defaults.app_name }}-redis-redis.${{ SEALOS_NAMESPACE }}.svc.cluster.local
 ```
 
-#### 或使用 Secret
+#### Or Using Secret
 ```yaml
 env:
   - name: POSTGRES_PASSWORD
@@ -506,7 +506,7 @@ env:
     value: postgresql://postgres:$(POSTGRES_PASSWORD)@${{ defaults.app_name }}-pg-postgresql.${{ SEALOS_NAMESPACE }}.svc:5432/mydb
 ```
 
-## 资源限制映射
+## Resource Limits Mapping
 
 ### Docker Compose
 ```yaml
@@ -538,12 +538,12 @@ spec:
               memory: 512Mi
 ```
 
-## 健康检查映射
+## Health Check Mapping
 
-转换优先级：
-1. Docker Compose 存在 `healthcheck` 时，转换为 `livenessProbe` + `readinessProbe`
-2. Compose 未提供但官方文档明确给出健康端点/命令时，仍必须生成 `livenessProbe` + `readinessProbe`
-3. 对首次启动较慢的应用（如需要初始化数据库），必须额外生成 `startupProbe`，避免启动期被过早判定失败
+Conversion priority:
+1. When Docker Compose has a `healthcheck`, convert it to `livenessProbe` + `readinessProbe`
+2. When Compose does not provide one but the official documentation clearly specifies a health endpoint/command, `livenessProbe` + `readinessProbe` must still be generated
+3. For applications with slow initial startup (e.g., those that need to initialize a database), a `startupProbe` must also be generated to avoid premature failure during startup
 
 ### Docker Compose
 ```yaml
@@ -556,7 +556,7 @@ services:
       retries: 3
 ```
 
-### 官方健康检查示例（authentik）
+### Official Health Check Example (authentik)
 ```yaml
 containers:
   - image: ghcr.io/goauthentik/server:2025.12.3
@@ -601,14 +601,14 @@ spec:
             periodSeconds: 10
 ```
 
-## 命令和参数映射
+## Command and Arguments Mapping
 
 ### Docker Compose
 ```yaml
 services:
   app:
     command: ["npm", "start"]
-    # 或
+    # or
     entrypoint: /app/start.sh
     command: arg1 arg2
 ```
@@ -621,44 +621,44 @@ spec:
       containers:
         - name: ${{ defaults.app_name }}
           command: ["npm", "start"]
-          # 或
+          # or
           command: ["/app/start.sh"]
           args: ["arg1", "arg2"]
 ```
 
-## 网络模式映射
+## Network Mode Mapping
 
-### 内置边缘网关（Traefik）处理
+### Built-in Edge Gateway (Traefik) Handling
 
-当 Compose 同时包含 Traefik 与业务服务时，优先使用 Sealos 平台 Ingress 能力，不保留 Traefik 作为模板内工作负载。
+When Compose includes both Traefik and business services, prefer using the Sealos platform Ingress capability and do not retain Traefik as an in-template workload.
 
-处理规则：
+Handling rules:
 
-- 若服务名或镜像可识别为 Traefik，且存在至少一个非数据库业务服务，则跳过 Traefik 资源生成。
-- 主访问入口指向业务服务（通常为首个业务服务）的 Service，由 Sealos Ingress 暴露公网域名。
-- 仅当应用服务里只有 Traefik（不存在其他业务服务）时，才保留 Traefik 作为回退行为，避免生成空工作负载。
+- If a service name or image is identifiable as Traefik, and at least one non-database business service exists, skip Traefik resource generation.
+- The primary access entry point should target the business service (typically the first business service) via its Service, with the public domain exposed through Sealos Ingress.
+- Only when the application contains only Traefik (no other business services) should Traefik be retained as a fallback, to avoid generating empty workloads.
 
-动机：
+Motivation:
 
-- 避免双层网关（Traefik + Sealos Ingress）引入额外转发复杂度。
-- 减少端口、路由与 TLS 配置漂移风险，使模板更贴合 Sealos 平台能力。
+- Avoid the additional forwarding complexity introduced by a dual-gateway setup (Traefik + Sealos Ingress).
+- Reduce the risk of port, routing, and TLS configuration drift, making the template better aligned with Sealos platform capabilities.
 
 ### Docker Compose
 ```yaml
 services:
   app:
     network_mode: host
-    # 或
+    # or
     ports:
       - "3000:3000"
 ```
 
 ### Sealos Template
 
-Sealos 不支持 host 网络模式，全部使用 Service + Ingress：
+Sealos does not support host network mode; all access uses Service + Ingress:
 
 ```yaml
-# Service (集群内访问)
+# Service (cluster-internal access)
 apiVersion: v1
 kind: Service
 metadata:
@@ -674,7 +674,7 @@ spec:
     app: ${{ defaults.app_name }}
 
 ---
-# Ingress (公网访问)
+# Ingress (public access)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -713,9 +713,9 @@ spec:
                   number: 3000
 ```
 
-## 对象存储映射
+## Object Storage Mapping
 
-### Docker Compose (使用 Minio)
+### Docker Compose (Using Minio)
 ```yaml
 services:
   minio:
@@ -735,7 +735,7 @@ spec:
   policy: private
 
 ---
-# 应用中使用对象存储
+# Using object storage in the application
 spec:
   template:
     spec:
@@ -759,24 +759,24 @@ spec:
                   key: bucket
 ```
 
-## 常见模式总结
+## Common Patterns Summary
 
-### 单容器应用
+### Single-Container Application
 - Docker Service → Deployment + Service + Ingress
 
-### 多容器应用
-- 每个 Docker Service → 独立的 Deployment + Service
-- 主应用使用 `${{ defaults.app_name }}`
-- 其他组件使用 `${{ defaults.app_name }}-<component>`
+### Multi-Container Application
+- Each Docker Service → Independent Deployment + Service
+- The main application uses `${{ defaults.app_name }}`
+- Other components use `${{ defaults.app_name }}-<component>`
 
-### 数据库服务
+### Database Services
 - Docker postgres/mysql/mongo/redis → Kubeblocks Cluster + ServiceAccount + Role + RoleBinding
 
-### 持久化存储
+### Persistent Storage
 - Docker volumes → StatefulSet + volumeClaimTemplates
 
-### 配置文件
-- Docker config files → ConfigMap (使用 vn- 命名规则)
+### Configuration Files
+- Docker config files → ConfigMap (using vn- naming convention)
 
-### 敏感信息
+### Sensitive Information
 - Docker business env vars → `env[].value` (`defaults`/`inputs`)

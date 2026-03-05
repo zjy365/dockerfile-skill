@@ -1,8 +1,8 @@
-# 数据库模板参考
+# Database Template Reference
 
-本文档包含各种数据库的完整 Sealos 模板配置，供转换时参考。
+This document contains complete Sealos template configurations for various databases, intended as a reference during conversion.
 
-## PostgreSQL 完整模板
+## PostgreSQL Full Template
 
 ```yaml
 apiVersion: apps.kubeblocks.io/v1alpha1
@@ -92,7 +92,7 @@ subjects:
     name: ${{ defaults.app_name }}-pg
 ```
 
-### PostgreSQL 数据库初始化 Job
+### PostgreSQL Database Initialization Job
 
 ```yaml
 apiVersion: batch/v1
@@ -139,7 +139,7 @@ spec:
   ttlSecondsAfterFinished: 300
 ```
 
-## MySQL 完整模板
+## MySQL Full Template
 
 ```yaml
 apiVersion: apps.kubeblocks.io/v1alpha1
@@ -232,7 +232,7 @@ subjects:
     name: ${{ defaults.app_name }}-mysql
 ```
 
-## MongoDB 完整模板
+## MongoDB Full Template
 
 ```yaml
 apiVersion: apps.kubeblocks.io/v1alpha1
@@ -317,7 +317,7 @@ subjects:
     name: ${{ defaults.app_name }}-mongo
 ```
 
-## Redis 完整模板
+## Redis Full Template
 
 ```yaml
 apiVersion: apps.kubeblocks.io/v1alpha1
@@ -433,7 +433,7 @@ subjects:
     name: ${{ defaults.app_name }}-redis
 ```
 
-## Kafka 完整模板
+## Kafka Full Template
 
 ```yaml
 apiVersion: apps.kubeblocks.io/v1alpha1
@@ -566,20 +566,20 @@ subjects:
     name: ${{ defaults.app_name }}-broker
 ```
 
-## 数据库连接配置
+## Database Connection Configuration
 
-### 升级基线（数据库升级文档）
+### Upgrade Baseline (Database Upgrade Documentation)
 
-以下规范与数据库升级文档保持一致：
+The following specifications are consistent with the database upgrade documentation:
 
-- 业务容器中的数据库连接字段（`endpoint`/`host`/`port`/`username`/`password`）必须通过 `secretKeyRef` 获取
-- PostgreSQL Cluster 使用 `postgresql-16.4.0`，并包含 `kb.io/database`、`disableExporter: true`、`enabledLogs: [running]`
-- Secret 命名升级：
-  - `xxx-redis-conn-credential` → `xxx-redis-account-default`
-  - `xxx-mongo-conn-credential` → `xxx-mongodb-account-root`
-  - `xxx-conn-credential`(kafka) → `xxx-broker-account-admin`
+- Database connection fields (`endpoint`/`host`/`port`/`username`/`password`) in application containers must be obtained via `secretKeyRef`
+- PostgreSQL Cluster uses `postgresql-16.4.0` and includes `kb.io/database`, `disableExporter: true`, `enabledLogs: [running]`
+- Secret naming upgrades:
+  - `xxx-redis-conn-credential` -> `xxx-redis-account-default`
+  - `xxx-mongo-conn-credential` -> `xxx-mongodb-account-root`
+  - `xxx-conn-credential` (kafka) -> `xxx-broker-account-admin`
 
-### Secret 命名规则
+### Secret Naming Conventions
 
 - PostgreSQL: `${{ defaults.app_name }}-pg-conn-credential`
 - MySQL: `${{ defaults.app_name }}-mysql-conn-credential`
@@ -587,16 +587,16 @@ subjects:
 - Redis: `${{ defaults.app_name }}-redis-account-default`
 - Kafka: `${{ defaults.app_name }}-broker-account-admin`
 
-### Secret 包含的 Keys
+### Keys Included in Secrets
 
-所有数据库 secret 都包含：
-- `endpoint`: 完整的连接端点（host:port）
-- `host`: 主机名
-- `password`: 密码
-- `port`: 端口号
-- `username`: 用户名
+All database secrets contain:
+- `endpoint`: Full connection endpoint (host:port)
+- `host`: Hostname
+- `password`: Password
+- `port`: Port number
+- `username`: Username
 
-### 环境变量配置示例
+### Environment Variable Configuration Examples
 
 ```yaml
 env:

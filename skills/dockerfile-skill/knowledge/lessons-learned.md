@@ -500,8 +500,7 @@ When the skill encounters a similar project (L3 complexity with migrations):
 
 ### User Feedback
 
-> "从这次的经验中,有没有可以收敛的 skill,下次遇到同种类型的,可以一次成功呢"
-> (From this experience, is there anything that can be converged into the skill so similar projects succeed on first try?)
+> "From this experience, is there anything that can be converged into the skill so similar projects succeed on first try?"
 
 **Lesson**: Custom CLI detection is CRITICAL for monorepo projects. Must be detected in analysis phase.
 

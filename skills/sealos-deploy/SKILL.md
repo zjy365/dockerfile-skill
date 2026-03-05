@@ -1,12 +1,12 @@
 ---
 name: sealos-deploy
+version: "1.0"
 description: Deploy any GitHub project to Sealos Cloud in one command. Assesses readiness, generates Dockerfile, builds image, creates Sealos template, and deploys — fully automated.
 triggers:
   - /sealos-deploy
   - deploy to sealos
   - deploy this to sealos
-  - 部署到 sealos
-  - 部署这个项目
+  - deploy this project to sealos
 allowed-tools: Read, Glob, Grep, Bash, Write, Edit, WebFetch, mcp__deepwiki__ask_question
 ---
 
@@ -36,7 +36,7 @@ Located in `scripts/` within this skill directory (`<SKILL_DIR>/scripts/`):
 | Script | Usage | Purpose |
 |--------|-------|---------|
 | `score-model.mjs` | `node score-model.mjs <repo-dir>` | Deterministic readiness scoring (0-12) |
-| `detect-image.mjs` | `node detect-image.mjs <github-url> [work-dir]` | Detect existing Docker/GHCR images |
+| `detect-image.mjs` | `node detect-image.mjs <github-url> [work-dir]` or `node detect-image.mjs <work-dir>` | Detect existing Docker/GHCR images |
 | `build-push.mjs` | `node build-push.mjs <work-dir> <user> <repo>` | Build amd64 image & push to Docker Hub |
 | `sealos-auth.mjs` | `node sealos-auth.mjs check\|login` | Sealos Cloud authentication |
 
@@ -66,7 +66,7 @@ Paths used in pipeline.md follow the pattern:
 | Phase | Action | Skip When |
 |-------|--------|-----------|
 | 0 — Preflight | Docker + Docker Hub + Sealos auth | All checks pass |
-| 1 — Assess | Clone repo, analyze deployability | Score too low → stop |
+| 1 — Assess | Clone repo (or use current project), analyze deployability | Score too low → stop |
 | 2 — Detect | Find existing image (Docker Hub / GHCR / README) | Found → jump to Phase 5 |
 | 3 — Dockerfile | Generate Dockerfile if missing | Already has one → skip |
 | 4 — Build & Push | `docker buildx` → Docker Hub | — |

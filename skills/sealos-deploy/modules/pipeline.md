@@ -8,17 +8,10 @@ Use `ENV` from preflight to choose between script mode (Node.js available) and f
 
 ---
 
-## Phase 1: Clone & Assess
+## Phase 1: Assess
 
-### 1.1 Prepare Working Directory
-
-If input is a GitHub URL:
-```bash
-WORK_DIR=$(mktemp -d)
-git clone --depth 1 <url> "$WORK_DIR"
-```
-
-If input is a local path, use it directly as `WORK_DIR`.
+`WORK_DIR`, `GITHUB_URL`, `REPO_NAME`, and README context are already resolved in preflight (Step 2).
+Use those directly — no need to re-derive.
 
 ### 1.2 Deterministic Scoring
 
@@ -71,14 +64,20 @@ Record for later phases: `language`, `framework`, `ports`, `env_vars`, `database
 
 **If Node.js available:**
 ```bash
-node "<SKILL_DIR>/scripts/detect-image.mjs" "<github-url>" "$WORK_DIR"
+# With GitHub URL:
+node "<SKILL_DIR>/scripts/detect-image.mjs" "$GITHUB_URL" "$WORK_DIR"
+# Local project without GitHub URL:
+node "<SKILL_DIR>/scripts/detect-image.mjs" "$WORK_DIR"
 ```
+The script auto-detects GitHub URL from `git remote` if only a directory is given.
+
 Output: `{ "found": true, "image": "...", "tag": "...", ... }` or `{ "found": false }`
 
 **If Node.js not available (fallback — use curl):**
 
-1. Parse owner/repo from GitHub URL
-2. Docker Hub check:
+1. Parse owner/repo from `GITHUB_URL` (if empty, try `git -C "$WORK_DIR" remote get-url origin`)
+2. If still no GitHub URL, skip Docker Hub / GHCR checks and only scan README for image references
+3. Docker Hub check:
 ```bash
 curl -sf "https://hub.docker.com/v2/namespaces/<owner>/repositories/<repo>/tags?page_size=10"
 ```
@@ -232,6 +231,17 @@ python "~/.claude/skills/docker-to-sealos/scripts/quality_gate.py" 2>/dev/null
 ```
 
 If Python is not available, validate manually by checking the MUST rules above against the generated YAML.
+
+---
+
+## Cleanup
+
+If `WORK_DIR` was created via `mktemp` (remote GitHub URL clone), remove it:
+```bash
+rm -rf "$WORK_DIR"
+```
+
+Do NOT clean up if `WORK_DIR` is the user's local project directory.
 
 ---
 
