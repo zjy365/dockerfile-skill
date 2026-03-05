@@ -1,0 +1,178 @@
+# Phase 0: Preflight
+
+Detect the user's environment, record what's available, guide them to fix what's missing.
+
+## Step 1: Environment Detection
+
+Run all checks and record results:
+
+```bash
+# Required
+docker --version 2>/dev/null
+git --version 2>/dev/null
+
+# Optional (enables script acceleration)
+node --version 2>/dev/null
+python3 --version 2>/dev/null
+
+# Always available (system built-in)
+curl --version 2>/dev/null | head -1
+which jq 2>/dev/null
+```
+
+Record the result as `ENV`:
+```
+ENV.docker    = true/false
+ENV.git       = true/false
+ENV.node      = true/false   (18+ required)
+ENV.python    = true/false
+ENV.curl      = true/false
+ENV.jq        = true/false
+```
+
+### Required — cannot proceed without these
+
+**Docker:**
+- Not installed → guide by platform:
+  - macOS: `brew install --cask docker` then open Docker Desktop
+  - Linux: `curl -fsSL https://get.docker.com | sh`
+- Installed but daemon not running (`docker info` fails) → "Please start Docker Desktop (macOS) or `sudo systemctl start docker` (Linux)."
+
+**git:**
+- Not installed → `brew install git` (macOS) or `sudo apt install git` (Linux)
+
+### Optional — scripts run faster, but AI can do the same work
+
+**Node.js:**
+- If missing, no problem. Pipeline uses fallback mode:
+  - `score-model.mjs` → AI reads files and applies scoring rules directly
+  - `detect-image.mjs` → AI runs curl commands for Docker Hub / GHCR API
+  - `build-push.mjs` → AI runs `docker buildx` commands directly
+  - `sealos-auth.mjs` → AI runs curl to exchange token for kubeconfig
+
+**Python:**
+- If missing, Sealos template validation (Phase 5) uses AI self-check instead of `quality_gate.py`
+
+## Step 2: Docker Hub Login
+
+```bash
+docker info 2>/dev/null | grep "Username:"
+```
+
+If not logged in:
+1. Ask user for Docker Hub username
+2. Run: `docker login -u <username>`
+3. Record `DOCKER_HUB_USER` for Phase 4
+
+If user doesn't have a Docker Hub account → guide to https://hub.docker.com/signup
+
+## Step 3: Sealos Cloud Auth (OAuth2 Device Grant Flow)
+
+Uses RFC 8628 Device Authorization Grant — no token copy-paste needed.
+
+### Check auth status:
+
+**With Node.js:**
+```bash
+node "<SKILL_DIR>/scripts/sealos-auth.mjs" check
+```
+Returns: `{ "authenticated": true/false, "kubeconfig_path": "..." }`
+
+**Without Node.js:**
+```bash
+test -f ~/.sealos/kubeconfig && echo '{"authenticated":true}' || echo '{"authenticated":false}'
+```
+
+### If not authenticated — Device Grant Login:
+
+**With Node.js (recommended):**
+```bash
+node "<SKILL_DIR>/scripts/sealos-auth.mjs" login [region-url]
+```
+
+The script will:
+1. `POST <region>/api/auth/oauth2/device` with `client_id=sealos-deploy`
+2. Output a verification URL and user code to stderr
+3. **Tell the user**: "Please open this URL in your browser to authorize: `<verification_uri_complete>`"
+4. Poll `POST <region>/api/auth/oauth2/token` every 5s until approved
+5. Exchange the access token for kubeconfig
+6. Save to `~/.sealos/kubeconfig` (mode 0600)
+
+Stdout outputs JSON result: `{ "kubeconfig_path": "...", "namespace": "...", "region": "..." }`
+
+**Without Node.js (curl fallback):**
+
+Step 1 — Request device authorization:
+```bash
+REGION="${REGION:-https://cloud.sealos.run}"
+DEVICE_RESP=$(curl -sf -X POST "$REGION/api/auth/oauth2/device" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id=sealos-deploy&grant_type=urn:ietf:params:oauth:grant-type:device_code")
+```
+
+Extract fields from response:
+```bash
+DEVICE_CODE=$(echo "$DEVICE_RESP" | grep -o '"device_code":"[^"]*"' | cut -d'"' -f4)
+USER_CODE=$(echo "$DEVICE_RESP" | grep -o '"user_code":"[^"]*"' | cut -d'"' -f4)
+VERIFY_URL=$(echo "$DEVICE_RESP" | grep -o '"verification_uri_complete":"[^"]*"' | cut -d'"' -f4)
+INTERVAL=$(echo "$DEVICE_RESP" | grep -o '"interval":[0-9]*' | cut -d: -f2)
+INTERVAL=${INTERVAL:-5}
+```
+
+Step 2 — Tell user to open browser:
+```
+Please open: $VERIFY_URL
+Authorization code: $USER_CODE
+```
+
+Step 3 — Poll for token:
+```bash
+while true; do
+  sleep "$INTERVAL"
+  TOKEN_RESP=$(curl -sf -X POST "$REGION/api/auth/oauth2/token" \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    -d "client_id=sealos-deploy&grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code=$DEVICE_CODE")
+
+  # Check for access_token in response
+  ACCESS_TOKEN=$(echo "$TOKEN_RESP" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+  if [ -n "$ACCESS_TOKEN" ]; then
+    break
+  fi
+
+  # Check for terminal errors
+  ERROR=$(echo "$TOKEN_RESP" | grep -o '"error":"[^"]*"' | cut -d'"' -f4)
+  case "$ERROR" in
+    authorization_pending) continue ;;
+    slow_down) INTERVAL=$((INTERVAL + 5)) ;;
+    access_denied) echo "User denied authorization"; exit 1 ;;
+    expired_token) echo "Device code expired"; exit 1 ;;
+    *) echo "Error: $ERROR"; exit 1 ;;
+  esac
+done
+```
+
+Step 4 — Exchange token for kubeconfig:
+```bash
+curl -sf -X POST "$REGION/api/auth/kubeconfig" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -o ~/.sealos/kubeconfig && chmod 600 ~/.sealos/kubeconfig
+```
+
+## Ready
+
+Report to user:
+
+```
+Environment:
+  ✓ Docker <version>
+  ✓ git <version>
+  ○ Node.js <version>        (or: ✗ Node.js — using AI fallback mode)
+  ○ Python <version>          (or: ✗ Python — template validation via AI)
+
+Auth:
+  ✓ Docker Hub (<username>)
+  ✓ Sealos Cloud (<region>)
+```
+
+Record `ENV` and `DOCKER_HUB_USER` for subsequent phases → proceed to `modules/pipeline.md`.

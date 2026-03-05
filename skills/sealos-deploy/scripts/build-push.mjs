@@ -1,0 +1,71 @@
+#!/usr/bin/env node
+
+/**
+ * Docker Build & Push
+ *
+ * Builds a Docker image for linux/amd64 and pushes to Docker Hub.
+ *
+ * Usage:
+ *   node build-push.mjs <work-dir> <docker-hub-user> <repo-name>
+ *
+ * Output (JSON):
+ *   { "success": true, "image": "zhujingyang/kite:20260304" }
+ *   { "success": false, "error": "build failed: ..." }
+ */
+
+import { execSync } from 'child_process'
+import fs from 'fs'
+import path from 'path'
+
+function getDateTag () {
+  const d = new Date()
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+}
+
+function buildAndPush (workDir, dockerHubUser, repoName) {
+  const tag = getDateTag()
+  const sanitized = repoName.toLowerCase().replace(/[^a-z0-9_.-]/g, '-')
+  const remoteImage = `${dockerHubUser}/${sanitized}:${tag}`
+
+  const dockerfilePath = path.join(workDir, 'Dockerfile')
+  if (!fs.existsSync(dockerfilePath)) {
+    return { success: false, error: 'No Dockerfile found in work directory' }
+  }
+
+  try {
+    execSync(
+      `docker buildx build --platform linux/amd64 -t ${remoteImage} --push .`,
+      { cwd: workDir, stdio: 'pipe', timeout: 600000 },
+    )
+
+    // Write build-result.json
+    const buildDir = path.join(workDir, 'docker-build')
+    fs.mkdirSync(buildDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(buildDir, 'build-result.json'),
+      JSON.stringify({
+        outcome: 'success',
+        build: { image_name: sanitized },
+        push: { remote_image: remoteImage, pushed_at: new Date().toISOString() },
+      }, null, 2),
+    )
+
+    return { success: true, image: remoteImage }
+  } catch (e) {
+    return { success: false, error: e.stderr?.toString() || e.message }
+  }
+}
+
+// ── CLI ────────────────────────────────────────────────────
+
+const [, , workDir, dockerHubUser, repoName] = process.argv
+
+if (!workDir || !dockerHubUser || !repoName) {
+  console.error('Usage: node build-push.mjs <work-dir> <docker-hub-user> <repo-name>')
+  process.exit(1)
+}
+
+const result = buildAndPush(path.resolve(workDir), dockerHubUser, repoName)
+console.log(JSON.stringify(result, null, 2))
+
+if (!result.success) process.exit(1)
